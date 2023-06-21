@@ -1,5 +1,5 @@
 [package]
-name = "server"
+name = "broker"
 version.workspace = true
 edition.workspace = true
 description = "core component of the message queue"
@@ -7,3 +7,4 @@ description = "core component of the message queue"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+uuid.workspace = true

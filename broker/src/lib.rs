@@ -8,6 +8,11 @@ pub enum Role {
 
 struct Server {
     id: String,
-    role: Role,
     topics: Vec<topic::Topic>,
+}
+
+impl Server {
+    pub fn new() -> Result<Self, String> {
+        unimplemented!()
+    }
 }

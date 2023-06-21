@@ -1,5 +1,5 @@
 [workspace]
-members = ["server", "observer"]
+members = ["broker", "observer"]
 
 [workspace.package]
 name = "imp"
@@ -10,3 +10,4 @@ description = "Imp is a multi-threaded version of some what a Kafka"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace.dependencies]
+uuid = { version = "1.3.3", features = ["v4"] }
