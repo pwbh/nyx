@@ -8,6 +8,6 @@ pub enum Role {
 
 struct Server {
     id: String,
-    topics: Vec<topic::Topic>,
     role: Role,
+    topics: Vec<topic::Topic>,
 }
