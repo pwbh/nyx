@@ -1,12 +1,12 @@
 # Observer [WIP]
 
-Obvserver will send in messages to the Brokers connected to it, for example on creation of a new Topic, Observer is responsible for distributing the pratitions of the topic on the Brokers for maximum fault-tolerence.
+Observer is a program that sends messages to brokers connected to it. For example, when a new topic is created, Observer is responsible for distributing the partitions of the topic across the brokers for maximum fault tolerance.
 
-### A typical flow of starting Imp:
+### Typical flow of starting Imp
 
-1. User launches for example 3 Brokers, Brokers in a state where they are looking for the observer with a specified host passed as param, on dev we can start the broker using `cargo run --bin broker localhost:5555` we assume that Observer runs on port 5555 locally. While the Observer is shut down, broker is just trying to connect to the Observer in intervals (which can be customized)
+1. The user launches three brokers. The brokers are in a state where they are looking for the observer with a specified host passed as a parameter. On development, we can start the broker using `cargo run --bin broker localhost:5555`. We assume that Observer runs on port 5555 locally. While Observer is shut down, the broker is just trying to connect to Observer in intervals (which can be customized).
 
-2. Observer is launched and the Brokers connecting to it, once connected, Observer prints a message that state so (TBD), Observer is now ready to receive commands and execute them.
+2. Observer is launched and the brokers connect to it. Once connected, Observer prints a message stating that it is ready to receive commands and execute them.
 
 ### Available commands
 
@@ -46,7 +46,7 @@ Disconnect broker partition rebalancing will take place
 DISCONNECT [BROKER_ID]
 ```
 
-Lists an entity of a choice, see examples below, Entity ID can be a broker, topic, or a partition id
+List an entity of a choice
 
 ```
 LIST [ENTITY_ID]
