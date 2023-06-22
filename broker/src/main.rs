@@ -11,5 +11,6 @@ fn main() {
 
 fn print_colored(text: &str, color: usize) {
     let t = format!("\x1b[38;5;{}m{}\x1b[0m", color, text);
+    // Should start trying to connect to the observer in intervals until success
     println!("{}", t)
 }
