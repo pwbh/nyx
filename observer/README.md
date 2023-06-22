@@ -10,6 +10,8 @@ Observer is a program that sends messages to brokers connected to it. For exampl
 
 ### Available commands
 
+#### CREATE
+
 Create topic
 
 ```bash
@@ -34,6 +36,8 @@ Delete paritition from a topic (will delete a partition with its given number)
 DELETE PARTITION [TOPIC_NAME] [PARTITION_NUM]
 ```
 
+#### CONNECT/DISCONNECT
+
 Connects a new spawned broker to the Observer
 
 ```
@@ -44,6 +48,14 @@ Disconnect broker partition rebalancing will take place
 
 ```
 DISCONNECT [BROKER_ID]
+```
+
+#### LIST
+
+List all entities
+
+```
+LIST ALL
 ```
 
 List an entity of a choice
