@@ -24,6 +24,8 @@ Create partition for topic
 CREATE PARTITION [TOPIC_NAME] [AMOUNT]
 ```
 
+#### DELETE
+
 Delete topic (will delete all partitions)
 
 ```
