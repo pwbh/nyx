@@ -8,11 +8,36 @@ Obvserver will send in messages to the Brokers connected to it, for example on c
 
 2. Observer is launched and the Brokers connecting to it, once connected, Observer prints a message that state so (TBD), Observer is now ready to receive commands and execute them.
 
-### Command example
+### Available commands
+
+Create topic
 
 ```bash
 CREATE TOPIC [TOPIC_NAME]
+```
+
+Create partition for topic
+
+```
 CREATE PARTITION [TOPIC_NAME] [AMOUNT]
+```
+
+Delete topic (will delete all partitions)
+
+```
+DELETE TOPIC [TOPIC_NAME]
+```
+
+Delete paritition from a topic (will delete a partition with its given number)
+
+```
+DELETE PARTITION [TOPIC_NAME] [PARTITION_NUM]
+```
+
+Connects a new spawned broker to the Observer
+
+```
+CONNECT [ADDRESS]
 ```
 
 Commands will return either `OK` after each execution or `ERR: [ERROR_DESCRIPTION]` to the terminal.

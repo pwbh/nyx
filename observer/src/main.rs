@@ -1,8 +1,18 @@
+use std::{io, str::SplitAsciiWhitespace};
+
 mod utils;
 
 fn main() {
     let hosts = parse_hosts();
     println!("{:?}", hosts);
+
+    let mut buf = String::new();
+
+    loop {
+        io::stdin().read_line(&mut buf).unwrap();
+        handle_command(buf.trim());
+        buf.clear();
+    }
 }
 
 fn parse_hosts() -> Vec<String> {
@@ -15,3 +25,17 @@ fn parse_hosts() -> Vec<String> {
         .map(|s| s.to_string())
         .collect()
 }
+
+fn handle_command(raw_command: &str) -> Result<String, String> {
+    let mut tokens = raw_command.split_ascii_whitespace();
+    let command = tokens.next().unwrap();
+
+    println!("Command executed: `{}`", command);
+
+    match command {
+        "CONNECT" => return handle_connect_command(&mut tokens),
+        _ => return Err("unrecognized command has been passed.".to_string()),
+    }
+}
+
+fn handle_connect_command(tokens: &mut SplitAsciiWhitespace<'_>) -> Result<String, String> {}
