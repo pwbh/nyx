@@ -4,7 +4,7 @@ pub enum CommandName {
 
 pub struct Command {
     pub name: CommandName,
-    arguments: Vec<String>,
+    pub arguments: Vec<String>,
 }
 
 impl Command {

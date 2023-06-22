@@ -1,8 +1,8 @@
 mod command;
 
 use self::command::{Command, CommandName};
-use std::str::SplitAsciiWhitespace;
 
+#[derive(Debug)]
 pub struct CommandProcessor {}
 
 impl CommandProcessor {
@@ -20,7 +20,7 @@ impl CommandProcessor {
             Command {
                 name: CommandName::Connect,
                 ..
-            } => return Ok("executed".to_string()),
+            } => return self.handle_connect_command(command),
 
             _ => {
                 return Err(
@@ -31,11 +31,8 @@ impl CommandProcessor {
         }
     }
 
-    fn handle_connect_command(
-        &self,
-        tokens: &mut SplitAsciiWhitespace<'_>,
-    ) -> Result<String, String> {
-        let hostname = match tokens.next() {
+    fn handle_connect_command(&self, command: &Command) -> Result<String, String> {
+        let hostname = match command.arguments.iter().next() {
             Some(hostname) => hostname,
             None => return Err("hostname was not provided.".to_string()),
         };
