@@ -40,4 +40,16 @@ Connects a new spawned broker to the Observer
 CONNECT [ADDRESS]
 ```
 
+Disconnect broker partition rebalancing will take place
+
+```
+DISCONNECT [BROKER_ID]
+```
+
+Lists an entity of a choice, see examples below, Entity ID can be a broker, topic, or a partition id
+
+```
+LIST [ENTITY_ID]
+```
+
 Commands will return either `OK` after each execution or `ERR: [ERROR_DESCRIPTION]` to the terminal.
