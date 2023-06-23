@@ -6,7 +6,8 @@ fn main() {
 |_ _|  \/  |  _ \  / ___|| ____|  _ \ \   / / ____|  _ \ 
  | || |\/| | |_) | \___ \|  _| | |_) \ \ / /|  _| | |_) |
  | || |  | |  __/   ___) | |___|  _ < \ V / | |___|  _ < 
-|___|_|  |_|_|     |____/|_____|_| \_\ \_/  |_____|_| \_\",
+|___|_|  |_|_|     |____/|_____|_| \_\ \_/  |_____|_| \_\
+",
         105,
     );
 
@@ -15,19 +16,20 @@ fn main() {
     let mut tcp_stream: Option<TcpStream> = None;
     let mut sleep_interval = 1000;
 
-    println!("Starting to looking for server");
-
     // Should start trying to connect to the observer in intervals until success
     loop {
         match TcpStream::connect(&addr) {
-            Ok(mut stream) => {
+            Ok(stream) => {
                 tcp_stream = Some(stream);
                 println!("Connection with the Observer has been established");
                 break;
             }
 
             Err(_) => {
-                println!("Waiting for Observer");
+                println!(
+                    "Failed to connect to the Observer, next retry in {}s",
+                    Duration::from_millis(sleep_interval).as_secs_f32()
+                );
                 std::thread::sleep(Duration::from_millis(sleep_interval));
                 sleep_interval += 1500;
             }
