@@ -3,15 +3,19 @@ mod command;
 use self::command::{Command, CommandName};
 
 #[derive(Debug)]
-pub struct CommandProcessor {}
+pub struct CommandProcessor {
+    buf: String,
+}
 
 impl CommandProcessor {
     pub fn new() -> Self {
-        Self {}
+        Self { buf: String::new() }
     }
 
-    pub fn process_raw_command(&self, raw_command: &str) -> Result<String, String> {
-        let command = Command::from(raw_command)?;
+    pub fn process_raw_command(&mut self) -> Result<String, String> {
+        std::io::stdin().read_line(&mut self.buf).unwrap();
+        let command = Command::from(&self.buf)?;
+        self.buf.clear();
         self.process_command(&command)
     }
 

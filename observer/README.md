@@ -66,4 +66,12 @@ List an entity of a choice
 LIST [ENTITY_ID]
 ```
 
+#### Exit
+
+Will exit the program
+
+```
+EXIT
+```
+
 Commands will return either `OK` after each execution or `ERR: [ERROR_DESCRIPTION]` to the terminal.

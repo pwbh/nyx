@@ -1,4 +1,8 @@
-use std::{io, net::TcpStream, time::Duration};
+use std::{
+    io::{BufRead, BufReader},
+    net::TcpStream,
+    time::Duration,
+};
 
 fn main() {
     print_colored(
@@ -33,6 +37,20 @@ fn main() {
                 std::thread::sleep(Duration::from_millis(sleep_interval));
                 sleep_interval += 1500;
             }
+        }
+    }
+
+    if let Some(stream) = tcp_stream {
+        let mut buf = String::with_capacity(1024);
+        let mut reader = BufReader::new(&stream);
+
+        // Reader loop
+        loop {
+            reader.read_line(&mut buf).unwrap();
+            println!("{}", buf);
+            buf.clear();
+            // Debouncing
+            std::thread::sleep(Duration::from_millis(2500));
         }
     }
 }

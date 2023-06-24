@@ -1,4 +1,8 @@
-use std::io;
+use std::{
+    io::{BufRead, BufReader},
+    net::{TcpListener, TcpStream},
+    thread::JoinHandle,
+};
 
 mod command_processor;
 mod utils;
@@ -6,29 +10,43 @@ mod utils;
 use command_processor::CommandProcessor;
 
 fn main() {
-    let command_processor = CommandProcessor::new();
+    let mut command_processor = CommandProcessor::new();
 
-    let hosts = parse_hosts();
+    // Open a TCP stream for brokers to connect to
+    let listener = TcpListener::bind("localhost:3000").unwrap();
+    println!("Observer is ready to accept brokers on port 3000");
+    std::thread::spawn(move || loop {
+        let stream = listener.incoming().next();
 
-    let mut buf = String::new();
+        if let Some(stream) = stream {
+            match stream {
+                Ok(stream) => {
+                    println!("Broker connection occured: {}", stream.peer_addr().unwrap());
+                    spaw_broker_stream_thread(stream);
+                }
+                Err(e) => println!("Failed to establish connection: {}", e),
+            }
+        }
+    });
 
+    // This will make sure our main thread will never exit until the user will issue an EXIT command by himself
     loop {
-        io::stdin().read_line(&mut buf).unwrap();
-        match command_processor.process_raw_command(&buf) {
+        match command_processor.process_raw_command() {
             Ok(status) => println!("\x1b[32m✓ {}\x1b[0m", status),
             Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
         };
-        buf.clear();
     }
 }
 
-fn parse_hosts() -> Vec<String> {
-    let hosts_arg = std::env::args().nth(1).expect(
-        "Please provide a list of servers urls e.g. `server:port server:port server:port...`",
-    );
+fn spaw_broker_stream_thread(stream: TcpStream) -> JoinHandle<()> {
+    std::thread::spawn(move || {
+        let mut buf = String::with_capacity(1024);
+        let mut reader = BufReader::new(&stream);
 
-    hosts_arg
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect()
+        loop {
+            reader.read_line(&mut buf).unwrap();
+            println!("{}", buf);
+            buf.clear();
+        }
+    })
 }
