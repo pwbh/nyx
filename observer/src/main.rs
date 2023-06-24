@@ -41,7 +41,10 @@ fn main() {
 }
 
 fn spawn_broker_stream_reader(stream: TcpStream) -> JoinHandle<()> {
-    println!("Broker read thread spawned");
+    println!(
+        "Broker read thread spawned for {}",
+        stream.peer_addr().unwrap()
+    );
 
     std::thread::spawn(move || {
         let mut buf = String::with_capacity(1024);
@@ -56,9 +59,12 @@ fn spawn_broker_stream_reader(stream: TcpStream) -> JoinHandle<()> {
 }
 
 fn spawn_broker_stream_writer(mut stream: TcpStream) -> JoinHandle<()> {
-    println!("Broker write thread spawned");
+    println!(
+        "Broker write thread spawned for {}",
+        stream.peer_addr().unwrap()
+    );
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(1500));
-        stream.write("Hello broker!\n".as_bytes()).unwrap();
+        stream.write("Hello from observer!\n".as_bytes()).unwrap();
     })
 }

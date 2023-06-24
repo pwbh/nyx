@@ -47,7 +47,7 @@ fn main() {
         // Reader loop
         loop {
             reader.read_line(&mut buf).unwrap();
-            println!("{}", buf);
+            print!("{}", buf);
             buf.clear();
         }
     }
