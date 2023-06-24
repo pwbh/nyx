@@ -1,7 +1,8 @@
 use std::{
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
     thread::JoinHandle,
+    time::Duration,
 };
 
 mod command_processor;
@@ -22,7 +23,8 @@ fn main() {
             match stream {
                 Ok(stream) => {
                     println!("Broker connection occured: {}", stream.peer_addr().unwrap());
-                    spaw_broker_stream_thread(stream);
+                    spawn_broker_stream_reader(stream.try_clone().unwrap());
+                    spawn_broker_stream_writer(stream);
                 }
                 Err(e) => println!("Failed to establish connection: {}", e),
             }
@@ -38,7 +40,9 @@ fn main() {
     }
 }
 
-fn spaw_broker_stream_thread(stream: TcpStream) -> JoinHandle<()> {
+fn spawn_broker_stream_reader(stream: TcpStream) -> JoinHandle<()> {
+    println!("Broker read thread spawned");
+
     std::thread::spawn(move || {
         let mut buf = String::with_capacity(1024);
         let mut reader = BufReader::new(&stream);
@@ -48,5 +52,13 @@ fn spaw_broker_stream_thread(stream: TcpStream) -> JoinHandle<()> {
             println!("{}", buf);
             buf.clear();
         }
+    })
+}
+
+fn spawn_broker_stream_writer(mut stream: TcpStream) -> JoinHandle<()> {
+    println!("Broker write thread spawned");
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(1500));
+        stream.write("Hello broker!\n".as_bytes()).unwrap();
     })
 }

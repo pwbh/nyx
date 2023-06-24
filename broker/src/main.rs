@@ -49,8 +49,6 @@ fn main() {
             reader.read_line(&mut buf).unwrap();
             println!("{}", buf);
             buf.clear();
-            // Debouncing
-            std::thread::sleep(Duration::from_millis(2500));
         }
     }
 }
