@@ -11,3 +11,4 @@ description = "Imp is a multi-threaded version of some what a Kafka"
 
 [workspace.dependencies]
 uuid = { version = "1.3.3", features = ["v4"] }
+clap = { version = "4.3.8", features = ["cargo"] }

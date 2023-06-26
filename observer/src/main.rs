@@ -1,3 +1,4 @@
+use clap::{arg, command};
 use std::{
     io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
@@ -11,6 +12,16 @@ mod utils;
 use command_processor::CommandProcessor;
 
 fn main() {
+    let matches = command!().arg(
+        arg!(-f --follow <HOST> "Runs the Observer as a follower for leader located at <HOST>, Host MUST by booted without -f flag.")
+        .required(false)
+    ).get_matches();
+
+    match matches.get_one::<String>("follow") {
+        Some(host) => println!("Booting as a follower for {}", host),
+        None => println!("Bootin as a leader"),
+    };
+
     let mut command_processor = CommandProcessor::new();
 
     // Open a TCP stream for brokers to connect to

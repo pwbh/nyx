@@ -5,15 +5,7 @@ use std::{
 };
 
 fn main() {
-    print_colored(
-        r" ___ __  __ ____    ____  _____ ______     _______ ____  
-|_ _|  \/  |  _ \  / ___|| ____|  _ \ \   / / ____|  _ \ 
- | || |\/| | |_) | \___ \|  _| | |_) \ \ / /|  _| | |_) |
- | || |  | |  __/   ___) | |___|  _ < \ V / | |___|  _ < 
-|___|_|  |_|_|     |____/|_____|_| \_\ \_/  |_____|_| \_\
-",
-        105,
-    );
+    println_c("Initializing broker", 105);
 
     let addr = std::env::args().nth(1).unwrap();
 
@@ -53,7 +45,11 @@ fn main() {
     }
 }
 
-fn print_colored(text: &str, color: usize) {
+fn println_c(text: &str, color: usize) {
+    if color > 255 {
+        panic!("Color is out of range 0 to 255");
+    }
+
     let t = format!("\x1b[38;5;{}m{}\x1b[0m", color, text);
     println!("{}", t)
 }
