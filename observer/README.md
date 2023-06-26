@@ -4,7 +4,24 @@ Observer is a program that sends messages to brokers connected to it. For exampl
 
 ### Typical flow of starting Imp
 
-1. The user launches three brokers. The brokers are in a state where they are looking for the observer with a specified host passed as a parameter. On development, we can start the broker using `cargo run --bin broker localhost:5555`. We assume that Observer runs on port 5555 locally. While Observer is shut down, the broker is just trying to connect to Observer in intervals (which can be customized).
+1. The user launches three brokers.
+   The brokers are in a state where they are looking for the observer with a specified host passed as a parameter. On development, we can start the broker using `cargo run --bin broker localhost:5555`. We assume that Observer runs on port 5555 locally. While Observer is shut down, the broker is just trying to connect to Observer in intervals (which can be customized).
+
+   You can use as much Observers as you want, but for a good fault-tolerence we recommend odd number of instances, no more then 5 for most of projects.
+
+   #### Start the Observer as Leader
+
+   ```
+   cargo run --bin observer
+   ```
+
+   #### Starting the Observers as a follower
+
+   ```
+   cargo run --bin observer -- -f <HOST>
+   ```
+
+   You should have 1 Leader + even number of followers as a result for the recommened fault-tolerence.
 
 2. Observer is launched and the brokers connect to it. Once connected, Observer prints a message stating that it is ready to receive commands and execute them.
 
