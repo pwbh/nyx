@@ -23,7 +23,8 @@ Observer is a program that sends messages to brokers connected to it. For exampl
 
    You should have 1 Leader + even number of followers as a result for the recommened fault-tolerence.
 
-2. Observer is launched and the brokers connect to it. Once connected, Observer prints a message stating that it is ready to receive commands and execute them.
+2. Once the Leader Observer is launched, brokers will find the Observer and will connect to it to star exchanging metadata,
+   be aware of different states through the Observer, receive the partitions and elect leaders. Once connected, Observer prints a message stating that it is ready to receive commands and execute them.
 
 ### Available commands
 
