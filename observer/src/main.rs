@@ -131,6 +131,10 @@ fn load_config(path: PathBuf) -> Result<HashMap<String, Value>, String> {
     };
 
     for line in content.lines() {
+        if line.chars().next().unwrap() == '#' {
+            continue;
+        }
+
         let split: Vec<&str> = line.split_terminator("=").collect();
 
         if split.len() != 2 {
@@ -139,7 +143,11 @@ fn load_config(path: PathBuf) -> Result<HashMap<String, Value>, String> {
 
         let key = split[0].to_string();
         let value = if let Ok(f) = split[1].parse::<f32>() {
-            Value::Float(f)
+            if split[1].contains(".") {
+                Value::Float(f)
+            } else {
+                Value::Number(split[1].parse::<i32>().unwrap())
+            }
         } else if let Ok(i) = split[1].parse::<i32>() {
             Value::Number(i)
         } else {
