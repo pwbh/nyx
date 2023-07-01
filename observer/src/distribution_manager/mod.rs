@@ -81,17 +81,19 @@ impl DistributionManager {
     }
 
     fn rebalance(&mut self) {
-        //  for i in 0..self.brokers.len() {
-        //      for j in i..self.brokers.len() {
-        //          if self.brokers[i].partitions.len() != self.brokers[i].partitions.len() {
-        //              check_partitions(&mut self.brokers[i], &mut self.brokers[j])
-        //          }
-        //      }
-        //  }
+        for i in 0..self.brokers.len() {
+            let (a, b) = self.brokers.split_at_mut(i + 1);
+
+            let current_broker = &mut a[i];
+
+            for other_broker in b.iter_mut() {
+                balance_brokers(current_broker, other_broker);
+            }
+        }
     }
 }
 
-fn check_partitions(current_broker: &mut Broker, other_broker: &mut Broker) {
+fn balance_brokers(current_broker: &mut Broker, other_broker: &mut Broker) {
     for current_partition in current_broker.partitions.iter() {
         let partition = other_broker
             .partitions
@@ -102,6 +104,54 @@ fn check_partitions(current_broker: &mut Broker, other_broker: &mut Broker) {
             let mut fresh_partition = current_partition.clone();
             fresh_partition.status = Status::PendingCreation;
             other_broker.partitions.push(fresh_partition);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{net::TcpListener, time::Duration};
+
+    use super::*;
+
+    #[test]
+    fn partition_distribution_works_as_exepcted() {
+        let distribution_manager = DistributionManager::new();
+        let mut distribution_manager_lock = distribution_manager.lock().unwrap();
+
+        let addr = "localhost:3000";
+        let listener = TcpListener::bind(addr).unwrap();
+
+        std::thread::spawn(move || loop {
+            listener.accept().unwrap();
+            std::thread::sleep(Duration::from_millis(150))
+        });
+
+        let mock_stream_1 = TcpStream::connect(addr).unwrap();
+        let mock_stream_2 = TcpStream::connect(addr).unwrap();
+        let mock_stream_3 = TcpStream::connect(addr).unwrap();
+
+        // Create 3 brokers to test the balancing of created partitions
+        distribution_manager_lock
+            .create_broker(mock_stream_1)
+            .unwrap();
+        distribution_manager_lock
+            .create_broker(mock_stream_2)
+            .unwrap();
+        distribution_manager_lock
+            .create_broker(mock_stream_3)
+            .unwrap();
+
+        let topic_name = "test_topic";
+
+        distribution_manager_lock.create_topic(topic_name).unwrap();
+
+        let result = distribution_manager_lock.create_partition(topic_name);
+
+        assert!(result.is_ok());
+
+        for broker in distribution_manager_lock.brokers.iter() {
+            assert_eq!(broker.partitions.len(), 1);
         }
     }
 }
