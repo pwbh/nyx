@@ -52,9 +52,10 @@ fn main() -> Result<(), String> {
                 match stream {
                     Ok(stream) => {
                         println!("Broker connection occured: {}", stream.peer_addr().unwrap());
-                        let mut distribution_manager = streams_distribution_manager.lock().unwrap();
+                        let mut distribution_manager_lock =
+                            streams_distribution_manager.lock().unwrap();
 
-                        if let Err(e) = distribution_manager.create_broker(stream) {
+                        if let Err(e) = distribution_manager_lock.create_broker(stream) {
                             println!("Broker read/write error: {}", e)
                         }
                     }

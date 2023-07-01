@@ -1,55 +1,58 @@
 use std::{
     io::{BufRead, BufReader, Write},
     net::TcpStream,
+    sync::{Arc, Mutex},
     thread::JoinHandle,
     time::Duration,
 };
 
+use super::{partition::Partition, topic::Topic};
+
 pub struct Broker {
-    read_handle: JoinHandle<()>,
-    write_handle: JoinHandle<()>,
+    stream: TcpStream,
+    pub partitions: Vec<Partition>,
 }
 
 impl Broker {
     pub fn from(stream: TcpStream) -> Result<Self, String> {
-        let read_stream = match stream.try_clone() {
-            Ok(stream) => stream,
-            Err(e) => return Err(e.to_string()),
-        };
+        // spawn_broker_stream_reader(read_stream.clone());
+        // spawn_broker_stream_writer(write_stream.clone());
 
         Ok(Self {
-            read_handle: spawn_broker_stream_reader(read_stream),
-            write_handle: spawn_broker_stream_writer(stream),
+            stream,
+            partitions: vec![],
         })
     }
 }
 
-fn spawn_broker_stream_reader(stream: TcpStream) -> JoinHandle<()> {
-    println!(
-        "Broker read thread spawned for {}",
-        stream.peer_addr().unwrap()
-    );
-
-    std::thread::spawn(move || {
-        let mut buf = String::with_capacity(1024);
-        let mut reader = BufReader::new(&stream);
-
-        loop {
-            reader.read_line(&mut buf).unwrap();
-            println!("{}", buf);
-            buf.clear();
-        }
-    })
-}
-
-fn spawn_broker_stream_writer(mut stream: TcpStream) -> JoinHandle<()> {
-    println!(
-        "Broker write thread spawned for {}",
-        stream.peer_addr().unwrap()
-    );
-
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_millis(1500));
-        stream.write("Hello from observer!\n".as_bytes()).unwrap();
-    })
-}
+// fn spawn_broker_stream_reader(stream: Arc<Mutex<TcpStream>>) -> JoinHandle<()> {
+//     std::thread::spawn(move || {
+//         let stream = stream.lock().unwrap();
+//
+//         println!(
+//             "Broker read thread spawned for {}",
+//             stream.peer_addr().unwrap()
+//         );
+//
+//         let mut buf = String::with_capacity(1024);
+//         let mut reader = BufReader::new(&*stream);
+//
+//         loop {
+//             reader.read_line(&mut buf).unwrap();
+//             println!("{}", buf);
+//             buf.clear();
+//         }
+//     })
+// }
+//
+// fn spawn_broker_stream_writer(mut stream: Arc<Mutex<TcpStream>>) -> JoinHandle<()> {
+//     println!(
+//         "Broker write thread spawned for {}",
+//         stream.peer_addr().unwrap()
+//     );
+//
+//     std::thread::spawn(move || loop {
+//         std::thread::sleep(Duration::from_millis(1500));
+//         stream.write("Hello from observer!\n".as_bytes()).unwrap();
+//     })
+// }
