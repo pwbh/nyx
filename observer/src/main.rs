@@ -1,18 +1,13 @@
 use clap::{arg, command};
-use std::{
-    collections::HashMap,
-    fs,
-    io::{BufRead, BufReader, Write},
-    net::{TcpListener, TcpStream},
-    path::PathBuf,
-    thread::JoinHandle,
-    time::Duration,
-};
+use std::{collections::HashMap, fs, net::TcpListener, path::PathBuf};
 
 mod command_processor;
+mod distribution_manager;
 mod utils;
 
 use command_processor::CommandProcessor;
+
+use crate::distribution_manager::DistributionManager;
 
 const DEFAULT_CONFIG_PATH: &str = "./config/dev.properties";
 
@@ -27,7 +22,7 @@ fn main() -> Result<(), String> {
 
     match matches.get_one::<String>("follow") {
         Some(host) => println!("Booting as a follower for {}", host),
-        None => println!("Bootin as a leader"),
+        None => println!("Booting as a leader"),
     };
 
     let config_path = matches.get_one::<String>("config").unwrap();
@@ -38,22 +33,33 @@ fn main() -> Result<(), String> {
 
     println!("{:?}", config);
 
+    let distribution_manager = DistributionManager::new();
     let mut command_processor = CommandProcessor::new();
 
     // Open a TCP stream for brokers to connect to
-    let listener = TcpListener::bind("localhost:3000").unwrap();
-    println!("Observer is ready to accept brokers on port 3000");
-    std::thread::spawn(move || loop {
-        let stream = listener.incoming().next();
 
-        if let Some(stream) = stream {
-            match stream {
-                Ok(stream) => {
-                    println!("Broker connection occured: {}", stream.peer_addr().unwrap());
-                    spawn_broker_stream_reader(stream.try_clone().unwrap());
-                    spawn_broker_stream_writer(stream);
+    println!("Observer is ready to accept brokers on port 3000");
+
+    let streams_distribution_manager = distribution_manager.clone();
+
+    std::thread::spawn(move || {
+        let listener = TcpListener::bind("localhost:3000").unwrap();
+
+        loop {
+            let stream = listener.incoming().next();
+
+            if let Some(stream) = stream {
+                match stream {
+                    Ok(stream) => {
+                        println!("Broker connection occured: {}", stream.peer_addr().unwrap());
+                        let mut distribution_manager = streams_distribution_manager.lock().unwrap();
+
+                        if let Err(e) = distribution_manager.create_broker(stream) {
+                            println!("Broker read/write error: {}", e)
+                        }
+                    }
+                    Err(e) => println!("Failed to establish connection: {}", e),
                 }
-                Err(e) => println!("Failed to establish connection: {}", e),
             }
         }
     });
@@ -72,35 +78,6 @@ fn main() -> Result<(), String> {
             Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
         };
     }
-}
-
-fn spawn_broker_stream_reader(stream: TcpStream) -> JoinHandle<()> {
-    println!(
-        "Broker read thread spawned for {}",
-        stream.peer_addr().unwrap()
-    );
-
-    std::thread::spawn(move || {
-        let mut buf = String::with_capacity(1024);
-        let mut reader = BufReader::new(&stream);
-
-        loop {
-            reader.read_line(&mut buf).unwrap();
-            println!("{}", buf);
-            buf.clear();
-        }
-    })
-}
-
-fn spawn_broker_stream_writer(mut stream: TcpStream) -> JoinHandle<()> {
-    println!(
-        "Broker write thread spawned for {}",
-        stream.peer_addr().unwrap()
-    );
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_millis(1500));
-        stream.write("Hello from observer!\n".as_bytes()).unwrap();
-    })
 }
 
 fn handle_connect_command(command: &command_processor::Command) {

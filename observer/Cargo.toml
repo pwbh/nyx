@@ -8,3 +8,4 @@ description = "cluster orchestrator"
 
 [dependencies]
 clap.workspace = true
+uuid.workspace = true

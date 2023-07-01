@@ -1,7 +1,5 @@
 use uuid::Uuid;
 
-use crate::Role;
-
 mod partition;
 
 pub struct Topic {
