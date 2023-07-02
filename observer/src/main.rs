@@ -1,5 +1,11 @@
 use clap::{arg, command};
-use std::{collections::HashMap, fs, net::TcpListener, path::PathBuf};
+use std::{
+    collections::HashMap,
+    fs,
+    net::TcpListener,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 mod command_processor;
 mod distribution_manager;
@@ -42,7 +48,7 @@ fn main() -> Result<(), String> {
 
     println!("Observer is ready to accept brokers on port 3000");
 
-    let distribution_manager = DistributionManager::new();
+    let mut distribution_manager = DistributionManager::new();
     let mut command_processor = CommandProcessor::new();
 
     let streams_distribution_manager = distribution_manager.clone();
@@ -76,27 +82,49 @@ fn main() -> Result<(), String> {
         match command_processor.process_raw_command() {
             Ok(command) => match command {
                 command_processor::Command {
-                    name: command_processor::CommandName::Connect,
+                    name: command_processor::CommandName::Create,
                     ..
-                } => handle_connect_command(&command),
-
-                _ => println!("sd"),
+                } => match handle_create_command(&mut distribution_manager, &command) {
+                    Ok(()) => (),
+                    Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
+                },
             },
             Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
         };
     }
 }
 
-fn handle_connect_command(command: &command_processor::Command) {
-    let hostname = match command.arguments.iter().next() {
-        Some(hostname) => hostname,
-        None => {
-            println!("hostname was not provided.");
-            return;
-        }
-    };
+fn handle_create_command(
+    distribution_manager: &mut Arc<Mutex<DistributionManager>>,
+    command: &command_processor::Command,
+) -> Result<(), String> {
+    match command.arguments.iter().next() {
+        Some(entity) => match entity.as_str() {
+            "TOPIC" => handle_create_topic(distribution_manager, &command.arguments[0]),
+            "PARTITION" => handle_create_partition(distribution_manager, &command.arguments[0]),
+            _ => Err("Unrecognized entity has been provided.".to_string()),
+        },
+        None => Err("Entity type was not provided.".to_string()),
+    }
+}
 
-    // do some logic for connecting
+fn handle_create_topic(
+    distribution_manager: &mut Arc<Mutex<DistributionManager>>,
+    topic_name: &str,
+) -> Result<(), String> {
+    let mut distribution_manager_lock: std::sync::MutexGuard<'_, DistributionManager> =
+        distribution_manager.lock().unwrap();
+    distribution_manager_lock.create_topic(topic_name)?;
+    Ok(())
+}
+
+fn handle_create_partition(
+    distribution_manager: &mut Arc<Mutex<DistributionManager>>,
+    topic_name: &str,
+) -> Result<(), String> {
+    let mut distribution_manager_lock = distribution_manager.lock().unwrap();
+    distribution_manager_lock.create_partition(topic_name)?;
+    Ok(())
 }
 
 #[derive(Debug)]

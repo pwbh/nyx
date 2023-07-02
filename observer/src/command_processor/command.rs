@@ -1,5 +1,5 @@
 pub enum CommandName {
-    Connect,
+    Create,
 }
 
 pub struct Command {
@@ -11,8 +11,9 @@ impl Command {
     pub fn from(raw_command: &str) -> Result<Self, String> {
         let mut tokens = raw_command.split_ascii_whitespace();
         let command = tokens.next().unwrap();
+
         let name = match command {
-            "CONNECT" => CommandName::Connect,
+            "CREATE" => CommandName::Create,
             _ => return Err("unrecognized command has been passed.".to_string()),
         };
 
