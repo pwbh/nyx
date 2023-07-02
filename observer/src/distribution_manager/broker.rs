@@ -10,7 +10,7 @@ use super::{partition::Partition, topic::Topic};
 
 #[derive(Debug)]
 pub struct Broker {
-    stream: TcpStream,
+    pub stream: TcpStream,
     pub partitions: Vec<Partition>,
 }
 

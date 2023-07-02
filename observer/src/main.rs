@@ -53,12 +53,17 @@ fn main() -> Result<(), String> {
         if let Some(stream) = stream {
             match stream {
                 Ok(stream) => {
-                    println!("Broker connection occured: {}", stream.peer_addr().unwrap());
                     let mut distribution_manager_lock =
                         streams_distribution_manager.lock().unwrap();
 
-                    if let Err(e) = distribution_manager_lock.create_broker(stream) {
-                        println!("Broker read/write error: {}", e)
+                    match distribution_manager_lock.create_broker(stream) {
+                        Ok(broker) => {
+                            println!(
+                                "New broker connected {}",
+                                broker.stream.peer_addr().unwrap()
+                            )
+                        }
+                        Err(e) => println!("Broker read/write error: {}", e),
                     }
                 }
                 Err(e) => println!("Failed to establish connection: {}", e),

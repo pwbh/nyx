@@ -134,7 +134,7 @@ mod tests {
 
     use super::*;
 
-    fn setup_brokers() -> Arc<Mutex<DistributionManager>> {
+    fn setup_distribution_for_tests() -> Arc<Mutex<DistributionManager>> {
         let distribution_manager = DistributionManager::new();
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
@@ -202,7 +202,7 @@ mod tests {
     #[test]
     fn create_topic_works_as_expected_when_brokers_exist() {
         // After brokers have connnected to the Observer
-        let distribution_manager = setup_brokers();
+        let distribution_manager = setup_distribution_for_tests();
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let topic_name = "new_user_registered";
@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn craete_partition_distributes_replicas() {
-        let distribution_manager = setup_brokers();
+        let distribution_manager = setup_distribution_for_tests();
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let topic_name = "notifications";
