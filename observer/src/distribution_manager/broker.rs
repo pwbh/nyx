@@ -8,6 +8,7 @@ use std::{
 
 use super::{partition::Partition, topic::Topic};
 
+#[derive(Debug)]
 pub struct Broker {
     stream: TcpStream,
     pub partitions: Vec<Partition>,
