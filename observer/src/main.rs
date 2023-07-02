@@ -33,34 +33,35 @@ fn main() -> Result<(), String> {
 
     println!("{:?}", config);
 
-    let distribution_manager = DistributionManager::new();
-    let mut command_processor = CommandProcessor::new();
+    let listener = match TcpListener::bind("localhost:3000") {
+        Ok(l) => l,
+        Err(e) => return Err(e.to_string()),
+    };
 
     // Open a TCP stream for brokers to connect to
 
     println!("Observer is ready to accept brokers on port 3000");
 
+    let distribution_manager = DistributionManager::new();
+    let mut command_processor = CommandProcessor::new();
+
     let streams_distribution_manager = distribution_manager.clone();
 
-    std::thread::spawn(move || {
-        let listener = TcpListener::bind("localhost:3000").unwrap();
+    std::thread::spawn(move || loop {
+        let stream = listener.incoming().next();
 
-        loop {
-            let stream = listener.incoming().next();
+        if let Some(stream) = stream {
+            match stream {
+                Ok(stream) => {
+                    println!("Broker connection occured: {}", stream.peer_addr().unwrap());
+                    let mut distribution_manager_lock =
+                        streams_distribution_manager.lock().unwrap();
 
-            if let Some(stream) = stream {
-                match stream {
-                    Ok(stream) => {
-                        println!("Broker connection occured: {}", stream.peer_addr().unwrap());
-                        let mut distribution_manager_lock =
-                            streams_distribution_manager.lock().unwrap();
-
-                        if let Err(e) = distribution_manager_lock.create_broker(stream) {
-                            println!("Broker read/write error: {}", e)
-                        }
+                    if let Err(e) = distribution_manager_lock.create_broker(stream) {
+                        println!("Broker read/write error: {}", e)
                     }
-                    Err(e) => println!("Failed to establish connection: {}", e),
                 }
+                Err(e) => println!("Failed to establish connection: {}", e),
             }
         }
     });
