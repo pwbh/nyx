@@ -152,13 +152,13 @@ mod tests {
         let mock_stream_3 = TcpStream::connect(addr).unwrap();
 
         // Create 3 brokers to test the balancing of created partitions
-        let broker_1 = distribution_manager_lock
+        distribution_manager_lock
             .create_broker(mock_stream_1)
             .unwrap();
-        let broker_2 = distribution_manager_lock
+        distribution_manager_lock
             .create_broker(mock_stream_2)
             .unwrap();
-        let broker_3 = distribution_manager_lock
+        distribution_manager_lock
             .create_broker(mock_stream_3)
             .unwrap();
 
