@@ -130,12 +130,11 @@ fn balance_brokers(current_broker: &mut Broker, other_broker: &mut Broker) {
 
 #[cfg(test)]
 mod tests {
-    use std::{net::TcpListener, time::Duration};
+    use std::net::TcpListener;
 
     use super::*;
 
-    #[test]
-    fn partition_distribution_works_as_exepcted() {
+    fn setup_brokers() -> Arc<Mutex<DistributionManager>> {
         let distribution_manager = DistributionManager::new();
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
@@ -144,7 +143,6 @@ mod tests {
 
         std::thread::spawn(move || loop {
             listener.accept().unwrap();
-            std::thread::sleep(Duration::from_millis(150))
         });
 
         let mock_stream_1 = TcpStream::connect(addr).unwrap();
@@ -161,6 +159,86 @@ mod tests {
         distribution_manager_lock
             .create_broker(mock_stream_3)
             .unwrap();
+
+        drop(distribution_manager_lock);
+
+        return distribution_manager;
+    }
+
+    #[test]
+    fn create_brokers_works_as_expected() {
+        let distribution_manager = DistributionManager::new();
+        let mut distribution_manager_lock = distribution_manager.lock().unwrap();
+
+        let addr = "localhost:8989";
+        let listener = TcpListener::bind(addr).unwrap();
+
+        std::thread::spawn(move || loop {
+            listener.accept().unwrap();
+        });
+
+        let mock_stream_1 = TcpStream::connect(addr).unwrap();
+
+        let result = distribution_manager_lock.create_broker(mock_stream_1);
+
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn create_topic_fails_when_no_brokers() {
+        let distribution_manager = DistributionManager::new();
+        let mut distribution_manager_lock = distribution_manager.lock().unwrap();
+
+        let topic_name = "new_user_registered";
+
+        // Before
+        let result = distribution_manager_lock
+            .create_topic(topic_name)
+            .unwrap_err();
+
+        assert!(result.contains("please add a broker."));
+    }
+
+    #[test]
+    fn create_topic_works_as_expected_when_brokers_exist() {
+        // After brokers have connnected to the Observer
+        let distribution_manager = setup_brokers();
+        let mut distribution_manager_lock = distribution_manager.lock().unwrap();
+
+        let topic_name = "new_user_registered";
+
+        distribution_manager_lock.create_topic(topic_name).unwrap();
+
+        assert_eq!(distribution_manager_lock.topics.len(), 1);
+
+        // We cant add the same topic name twice - Should error
+        let result = distribution_manager_lock
+            .create_topic(topic_name)
+            .unwrap_err();
+
+        assert!(result.contains("already exist."));
+
+        distribution_manager_lock
+            .create_topic("notification_resent")
+            .unwrap();
+
+        assert_eq!(distribution_manager_lock.topics.len(), 2);
+        assert_eq!(
+            distribution_manager_lock
+                .topics
+                .last()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .name,
+            "notification_resent"
+        );
+    }
+
+    #[test]
+    fn craete_partition_distributes_replicas() {
+        let distribution_manager = setup_brokers();
+        let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let topic_name = "notifications";
 
