@@ -202,7 +202,7 @@ mod tests {
             .create_topic(topic_name)
             .unwrap_err();
 
-        assert!(result.contains("please add a broker."));
+        assert!(result.contains("No brokers have been found"));
     }
 
     #[test]
