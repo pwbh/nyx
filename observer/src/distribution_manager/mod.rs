@@ -45,7 +45,10 @@ impl DistributionManager {
 
     pub fn create_topic(&mut self, topic_name: &str) -> Result<&Arc<Mutex<Topic>>, String> {
         if self.brokers.len() == 0 {
-            return Err("0 brokers have been found, please add a broker.".to_string());
+            return Err(
+                "No brokers have been found, please make sure at least one broker is connected."
+                    .to_string(),
+            );
         }
 
         let topic_exists = self.topics.iter().any(|t| {
@@ -67,7 +70,10 @@ impl DistributionManager {
     // Need to rebalance if new partition is added to the broker
     pub fn create_partition(&mut self, topic_name: &str) -> Result<usize, String> {
         if self.brokers.len() == 0 {
-            return Err("0 brokers have been found, please add a broker.".to_string());
+            return Err(
+                "No brokers have been found, please make sure at least one broker is connected."
+                    .to_string(),
+            );
         }
 
         let topic = self.topics.iter_mut().find(|t| {
