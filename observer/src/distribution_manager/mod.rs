@@ -266,24 +266,40 @@ mod tests {
 
         distribution_manager_lock.create_topic(topic_name).unwrap();
 
-        let partition_replication_count_1 = distribution_manager_lock
+        // First partition for topic 'comments'
+        let partition_replication_count_3 = distribution_manager_lock
             .create_partition(topic_name)
             .unwrap();
 
         assert_eq!(
-            partition_replication_count_1,
+            partition_replication_count_3,
             distribution_manager_lock.brokers.len()
         );
 
-        let partition_replication_count_2 = distribution_manager_lock
+        // Second partition for topic 'comments'
+        let partition_replication_count_4 = distribution_manager_lock
             .create_partition(topic_name)
             .unwrap();
 
         assert_eq!(
-            partition_replication_count_2,
+            partition_replication_count_4,
             distribution_manager_lock.brokers.len()
         );
 
-        println!("{:#?}", distribution_manager_lock.brokers);
+        let topic_name = "friend_requests";
+
+        distribution_manager_lock.create_topic(topic_name).unwrap();
+
+        // First partition for topic 'friend_requests'
+        let partition_replication_count_5 = distribution_manager_lock
+            .create_partition("friend_requests")
+            .unwrap();
+
+        assert_eq!(
+            partition_replication_count_5,
+            distribution_manager_lock.brokers.len()
+        );
+
+        // println!("{:#?}", distribution_manager_lock.brokers);
     }
 }
