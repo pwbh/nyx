@@ -1,12 +1,10 @@
 [package]
-name = "broker"
+name = "shared_structures"
 version.workspace = true
 edition.workspace = true
-description = "core component of the message queue"
+description = "Shared structures between the Observer and Broker"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-shared_structures = { path = "../shared_structures" }
-
 uuid.workspace = true

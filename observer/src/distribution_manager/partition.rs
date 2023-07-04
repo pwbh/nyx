@@ -1,13 +1,8 @@
 use std::sync::{Arc, Mutex};
 
-use super::{topic::Topic, Role};
+use shared_structures::{Role, Status};
 
-#[derive(Clone, Copy, Debug)]
-pub enum Status {
-    PendingCreation,
-    Crashed,
-    Active,
-}
+use super::topic::Topic;
 
 #[derive(Clone, Debug)]
 pub struct Partition {
@@ -28,6 +23,14 @@ impl Partition {
             role: Role::Follower,
             partition_number,
             replica_number: 0,
+        }
+    }
+
+    pub fn from(partition: &Self) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            status: Status::PendingCreation,
+            ..partition.clone()
         }
     }
 

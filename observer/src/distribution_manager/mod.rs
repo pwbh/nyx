@@ -8,18 +8,10 @@ mod partition;
 mod topic;
 
 pub use broker::Broker;
+use shared_structures::Status;
 use uuid::Uuid;
 
-use self::{
-    partition::{Partition, Status},
-    topic::Topic,
-};
-
-#[derive(Clone, Copy, Debug)]
-pub enum Role {
-    Follower,
-    Leader,
-}
+use self::{partition::Partition, topic::Topic};
 
 #[derive(Debug)]
 pub struct DistributionManager {
@@ -126,9 +118,7 @@ fn balance_brokers(current_broker: &mut Broker, other_broker: &mut Broker) {
             .find(|p| current_partition.id == p.id);
 
         if let None = partition {
-            let mut fresh_partition = current_partition.clone();
-            fresh_partition.status = Status::PendingCreation;
-            fresh_partition.id = Uuid::new_v4().to_string();
+            let fresh_partition = Partition::from(current_partition);
             other_broker.partitions.push(fresh_partition);
         }
     }

@@ -1,5 +1,5 @@
 [workspace]
-members = ["broker", "observer"]
+members = ["broker", "observer", "shared_structures"]
 
 [workspace.package]
 name = "imp"
