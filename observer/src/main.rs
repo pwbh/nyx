@@ -85,7 +85,7 @@ fn main() -> Result<(), String> {
                     name: command_processor::CommandName::Create,
                     ..
                 } => match handle_create_command(&mut distribution_manager, &command) {
-                    Ok(()) => (),
+                    Ok(()) => println!("\x1b[38;5;2mOK\x1b[0m"),
                     Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
                 },
             },
