@@ -8,6 +8,7 @@ use std::{
 use broker::Broker;
 
 fn main() -> Result<(), Box<dyn Error>> {
+    let mut exit = false;
     println_c("Initializing broker", 105);
 
     let addr = std::env::args().nth(1).unwrap();
@@ -38,18 +39,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     let stream = tcp_stream.ok_or("Stream is wrong")?;
 
     let mut broker = Broker::new(stream);
-
     broker.send_info()?;
 
-    println!("{:#?}", broker);
+    let mut reader = BufReader::new(&broker.observer_stream);
 
-    let exit = false;
+    let mut buf = String::with_capacity(1024);
 
     // Reader loop
     loop {
         if exit {
             break;
         }
+        let size = reader.read_line(&mut buf).map_err(|e| e.to_string())?;
+        if size == 0 {
+            println!("Connection with observer has been closed, exiting.");
+            exit = true;
+        }
+        buf.clear();
     }
 
     Ok(())
