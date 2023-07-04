@@ -63,12 +63,7 @@ fn main() -> Result<(), String> {
                         streams_distribution_manager.lock().unwrap();
 
                     match distribution_manager_lock.create_broker(stream) {
-                        Ok(broker) => {
-                            println!(
-                                "New broker connected {}",
-                                broker.stream.peer_addr().unwrap()
-                            )
-                        }
+                        Ok(broker) => {}
                         Err(e) => println!("Broker read/write error: {}", e),
                     }
                 }

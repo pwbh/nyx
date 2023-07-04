@@ -1,5 +1,4 @@
-use uuid::Uuid;
-
+#[derive(Debug)]
 pub struct Topic {
     id: String,
     name: String,

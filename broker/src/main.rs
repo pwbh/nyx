@@ -1,10 +1,13 @@
 use std::{
+    error::Error,
     io::{BufRead, BufReader},
     net::TcpStream,
     time::Duration,
 };
 
-fn main() {
+use broker::Broker;
+
+fn main() -> Result<(), Box<dyn Error>> {
     println_c("Initializing broker", 105);
 
     let addr = std::env::args().nth(1).unwrap();
@@ -32,17 +35,24 @@ fn main() {
         }
     }
 
-    if let Some(stream) = tcp_stream {
-        let mut buf = String::with_capacity(1024);
-        let mut reader = BufReader::new(&stream);
+    let stream = tcp_stream.ok_or("Stream is wrong")?;
 
-        // Reader loop
-        loop {
-            reader.read_line(&mut buf).unwrap();
-            print!("{}", buf);
-            buf.clear();
+    let mut broker = Broker::new(stream);
+
+    broker.send_info()?;
+
+    println!("{:#?}", broker);
+
+    let exit = false;
+
+    // Reader loop
+    loop {
+        if exit {
+            break;
         }
     }
+
+    Ok(())
 }
 
 fn println_c(text: &str, color: usize) {

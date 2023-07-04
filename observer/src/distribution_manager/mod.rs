@@ -8,8 +8,6 @@ mod partition;
 mod topic;
 
 pub use broker::Broker;
-use shared_structures::Status;
-use uuid::Uuid;
 
 use self::{partition::Partition, topic::Topic};
 
@@ -30,6 +28,7 @@ impl DistributionManager {
     // Need to rebalance if new broker is added
     pub fn create_broker(&mut self, stream: TcpStream) -> Result<&Broker, String> {
         let broker = Broker::from(stream)?;
+        println!("New broker connected with id: {}", broker.id);
         self.brokers.push(broker);
         self.rebalance();
         Ok(self.brokers.last().unwrap())

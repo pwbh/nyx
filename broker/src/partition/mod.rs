@@ -6,6 +6,7 @@ use crate::topic::Topic;
 
 mod record;
 
+#[derive(Debug)]
 pub struct Partition {
     pub id: String,
     pub status: Status,
