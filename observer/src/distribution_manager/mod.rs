@@ -14,7 +14,7 @@ use self::{partition::Partition, topic::Topic};
 
 #[derive(Debug)]
 pub struct DistributionManager {
-    pub brokers: Vec<Broker>,
+    pub brokers: Arc<Mutex<Vec<Broker>>>,
     topics: Vec<Arc<Mutex<Topic>>>,
 }
 
@@ -26,22 +26,19 @@ impl DistributionManager {
         }))
     }
 
-    // Need to rebalance if new broker is added
+    // Will return the broker id that has been added to the Observer
     pub fn create_broker(&mut self, stream: TcpStream) -> Result<String, String> {
         let mut brokers_lock = self.brokers.lock().unwrap();
         let broker = Broker::from(stream)?;
+        self.spawn_broker_reader(&broker)?;
+        let broker_id = broker.id.clone();
         brokers_lock.push(broker);
-        let broker_index = brokers_lock.len() - 1;
         rebalance(&mut brokers_lock);
-        let broker = brokers_lock.last().ok_or(
-            "Failed to get newly created broker (last item doesnt exist, no brokers found?)."
-                .to_string(),
-        )?;
-        self.spawn_broker_reader(&broker, broker_index)?;
-        Ok(broker.id.clone())
+        Ok(broker_id)
     }
 
-    pub fn create_topic(&mut self, topic_name: &str) -> Result<&Arc<Mutex<Topic>>, String> {
+    // Will return the name of created topic on success
+    pub fn create_topic(&mut self, topic_name: &str) -> Result<String, String> {
         let brokers_lock = self.brokers.lock().unwrap();
 
         if brokers_lock.len() == 0 {
@@ -61,12 +58,9 @@ impl DistributionManager {
         }
 
         let topic = Topic::new(topic_name.to_string());
-
         self.topics.push(topic);
 
-        self.topics
-            .last()
-            .ok_or("There is no topics on the Observer.".to_string())
+        Ok(topic_name.to_string())
     }
 
     // Need to rebalance if new partition is added to the broker
@@ -109,10 +103,11 @@ impl DistributionManager {
         Ok(replication_count)
     }
 
-    fn spawn_broker_reader(&self, broker: &Broker, broker_index: usize) -> Result<(), String> {
+    fn spawn_broker_reader(&self, broker: &Broker) -> Result<(), String> {
         let watch_stream = broker.stream.try_clone().map_err(|e| e.to_string())?;
 
         let brokers = Arc::clone(&self.brokers);
+        let broker_id = broker.id.clone();
 
         std::thread::spawn(move || {
             let mut reader = BufReader::new(watch_stream);
@@ -121,8 +116,11 @@ impl DistributionManager {
             loop {
                 let size = reader.read_line(&mut buf).unwrap();
                 if size == 0 {
+                    println!("Broker {} has disconnected.", broker_id);
                     let mut brokers_lock = brokers.lock().unwrap();
-                    brokers_lock.remove(broker_index);
+                    if let Some(index) = brokers_lock.iter().position(|b| b.id == broker_id) {
+                        brokers_lock.remove(index);
+                    }
                     break;
                 }
             }
@@ -163,20 +161,20 @@ mod tests {
 
     use super::*;
 
-    fn setup_distribution_for_tests() -> Arc<Mutex<DistributionManager>> {
+    fn setup_distribution_for_tests(port: &str) -> Arc<Mutex<DistributionManager>> {
         let distribution_manager = DistributionManager::new();
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
-        let addr = "localhost:3000";
-        let listener = TcpListener::bind(addr).unwrap();
+        let addr = format!("localhost:{}", port);
+        let listener = TcpListener::bind(&addr).unwrap();
 
         std::thread::spawn(move || loop {
             listener.accept().unwrap();
         });
 
-        let mock_stream_1 = TcpStream::connect(addr).unwrap();
-        let mock_stream_2 = TcpStream::connect(addr).unwrap();
-        let mock_stream_3 = TcpStream::connect(addr).unwrap();
+        let mock_stream_1 = TcpStream::connect(&addr).unwrap();
+        let mock_stream_2 = TcpStream::connect(&addr).unwrap();
+        let mock_stream_3 = TcpStream::connect(&addr).unwrap();
 
         // Create 3 brokers to test the balancing of created partitions
         distribution_manager_lock
@@ -231,7 +229,7 @@ mod tests {
     #[test]
     fn create_topic_works_as_expected_when_brokers_exist() {
         // After brokers have connnected to the Observer
-        let distribution_manager = setup_distribution_for_tests();
+        let distribution_manager = setup_distribution_for_tests("5001");
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let topic_name = "new_user_registered";
@@ -266,7 +264,7 @@ mod tests {
 
     #[test]
     fn craete_partition_distributes_replicas() {
-        let distribution_manager = setup_distribution_for_tests();
+        let distribution_manager = setup_distribution_for_tests("5002");
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let topic_name = "notifications";
@@ -277,13 +275,19 @@ mod tests {
             .create_partition(topic_name)
             .unwrap();
 
-        assert_eq!(partition_replication_count_1, brokers_lock.len());
+        assert_eq!(
+            partition_replication_count_1,
+            distribution_manager_lock.brokers.lock().unwrap().len()
+        );
 
         let partition_replication_count_2 = distribution_manager_lock
             .create_partition(topic_name)
             .unwrap();
 
-        assert_eq!(partition_replication_count_2, brokers_lock.len());
+        assert_eq!(
+            partition_replication_count_2,
+            distribution_manager_lock.brokers.lock().unwrap().len()
+        );
 
         let topic_name = "comments";
 
@@ -294,14 +298,20 @@ mod tests {
             .create_partition(topic_name)
             .unwrap();
 
-        assert_eq!(partition_replication_count_3, brokers_lock.len());
+        assert_eq!(
+            partition_replication_count_3,
+            distribution_manager_lock.brokers.lock().unwrap().len()
+        );
 
         // Second partition for topic 'comments'
         let partition_replication_count_4 = distribution_manager_lock
             .create_partition(topic_name)
             .unwrap();
 
-        assert_eq!(partition_replication_count_4, brokers_lock.len());
+        assert_eq!(
+            partition_replication_count_4,
+            distribution_manager_lock.brokers.lock().unwrap().len()
+        );
 
         let topic_name = "friend_requests";
 
@@ -312,7 +322,10 @@ mod tests {
             .create_partition("friend_requests")
             .unwrap();
 
-        assert_eq!(partition_replication_count_5, brokers_lock.len());
+        assert_eq!(
+            partition_replication_count_5,
+            distribution_manager_lock.brokers.lock().unwrap().len()
+        );
 
         // println!("{:#?}", distribution_manager_lock.brokers);
     }
