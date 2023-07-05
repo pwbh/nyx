@@ -35,7 +35,7 @@ fn main() -> Result<(), String> {
 
     println!("{:?}", config);
 
-    let role = if let Some(_) = leader_address {
+    let role = if leader_address.is_none() {
         Role::Leader
     } else {
         Role::Follower
