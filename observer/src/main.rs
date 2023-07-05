@@ -93,10 +93,14 @@ fn handle_create_command(
     distribution_manager: &mut Arc<Mutex<DistributionManager>>,
     command: &command_processor::Command,
 ) -> Result<(), String> {
-    match command.arguments.iter().next() {
+    let mut arguments_iter = command.arguments.iter();
+
+    match arguments_iter.next() {
         Some(entity) => match entity.as_str() {
-            "TOPIC" => handle_create_topic(distribution_manager, &command.arguments[0]),
-            "PARTITION" => handle_create_partition(distribution_manager, &command.arguments[0]),
+            "TOPIC" => handle_create_topic(distribution_manager, &arguments_iter.next().unwrap()),
+            "PARTITION" => {
+                handle_create_partition(distribution_manager, &arguments_iter.next().unwrap())
+            }
             _ => Err("Unrecognized entity has been provided.".to_string()),
         },
         None => Err("Entity type was not provided.".to_string()),

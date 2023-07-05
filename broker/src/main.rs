@@ -36,7 +36,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     }
 
-    let stream = tcp_stream.ok_or("Stream is wrong")?;
+    let stream: TcpStream = tcp_stream.ok_or("Stream is wrong")?;
 
     let mut broker = Broker::new(stream);
     broker.send_info()?;

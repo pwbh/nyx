@@ -28,10 +28,14 @@ impl DistributionManager {
     // Need to rebalance if new broker is added
     pub fn create_broker(&mut self, stream: TcpStream) -> Result<&Broker, String> {
         let broker = Broker::from(stream)?;
-        println!("New broker connected with id: {}", broker.id);
+        println!("Broker {} connected.", broker.id);
         self.brokers.push(broker);
         self.rebalance();
-        Ok(self.brokers.last().unwrap())
+        let broker = self.brokers.last().ok_or(
+            "Failed to get newly created broker (last item doesnt exist, no brokers found?)."
+                .to_string(),
+        )?;
+        Ok(broker)
     }
 
     pub fn create_topic(&mut self, topic_name: &str) -> Result<&Arc<Mutex<Topic>>, String> {
@@ -55,7 +59,9 @@ impl DistributionManager {
 
         self.topics.push(topic);
 
-        Ok(self.topics.last().unwrap())
+        self.topics
+            .last()
+            .ok_or("There is no topics on the Observer.".to_string())
     }
 
     // Need to rebalance if new partition is added to the broker
