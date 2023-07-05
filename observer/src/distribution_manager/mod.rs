@@ -30,6 +30,7 @@ impl DistributionManager {
     pub fn create_broker(&mut self, stream: TcpStream) -> Result<String, String> {
         let mut brokers_lock = self.brokers.lock().unwrap();
         let broker = Broker::from(stream)?;
+        println!("{:?}", broker);
         self.spawn_broker_reader(&broker)?;
         let broker_id = broker.id.clone();
         brokers_lock.push(broker);
@@ -157,35 +158,49 @@ fn balance_brokers(current_broker: &mut Broker, other_broker: &mut Broker) {
 
 #[cfg(test)]
 mod tests {
-    use std::net::TcpListener;
+    use std::{io::Write, net::TcpListener};
 
     use super::*;
 
+    fn mock_connecting_broker(addr: &str) -> TcpStream {
+        let mut mock_stream = TcpStream::connect(&addr).unwrap();
+        let payload = format!("{}\n", uuid::Uuid::new_v4().to_string());
+        mock_stream.write(payload.as_bytes()).unwrap();
+        let read_stream = mock_stream.try_clone().unwrap();
+
+        std::thread::spawn(|| {
+            let mut reader = BufReader::new(read_stream);
+            let mut buf = String::with_capacity(1024);
+
+            loop {
+                let size = reader.read_line(&mut buf).unwrap();
+
+                if size == 0 {
+                    break;
+                }
+            }
+        });
+
+        return mock_stream;
+    }
+
     fn setup_distribution_for_tests(port: &str) -> Arc<Mutex<DistributionManager>> {
-        let distribution_manager = DistributionManager::new();
+        let distribution_manager: Arc<Mutex<DistributionManager>> = DistributionManager::new();
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let addr = format!("localhost:{}", port);
         let listener = TcpListener::bind(&addr).unwrap();
 
-        std::thread::spawn(move || loop {
-            listener.accept().unwrap();
-        });
-
-        let mock_stream_1 = TcpStream::connect(&addr).unwrap();
-        let mock_stream_2 = TcpStream::connect(&addr).unwrap();
-        let mock_stream_3 = TcpStream::connect(&addr).unwrap();
-
         // Create 3 brokers to test the balancing of created partitions
-        distribution_manager_lock
-            .create_broker(mock_stream_1)
-            .unwrap();
-        distribution_manager_lock
-            .create_broker(mock_stream_2)
-            .unwrap();
-        distribution_manager_lock
-            .create_broker(mock_stream_3)
-            .unwrap();
+        mock_connecting_broker(&addr);
+        mock_connecting_broker(&addr);
+        mock_connecting_broker(&addr);
+
+        for _ in 0..3 {
+            let stream = listener.incoming().next().unwrap().unwrap();
+            println!("{:?}", stream);
+            distribution_manager_lock.create_broker(stream).unwrap();
+        }
 
         drop(distribution_manager_lock);
 

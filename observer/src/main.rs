@@ -1,13 +1,9 @@
 use clap::{arg, command};
-use observer::{
-    distribution_manager::{Broker, DistributionManager},
-    Observer,
-};
+use observer::{distribution_manager::DistributionManager, Observer};
 use shared_structures::Role;
 use std::{
     collections::HashMap,
     fs,
-    io::{BufRead, BufReader},
     net::TcpStream,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -58,7 +54,7 @@ fn main() -> Result<(), String> {
             match stream {
                 Ok(stream) => match handle_create_broker(&mut streams_distribution_manager, stream)
                 {
-                    Ok(()) => (),
+                    Ok(broker_id) => println!("Broker {} has connected.", broker_id),
                     Err(e) => println!("{}", e),
                 },
                 Err(e) => println!("Failed to establish connection: {}", e),
@@ -104,10 +100,9 @@ fn handle_create_command(
 fn handle_create_broker(
     distribution_manager: &mut Arc<Mutex<DistributionManager>>,
     stream: TcpStream,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let mut distribution_manager_lock = distribution_manager.lock().unwrap();
-    distribution_manager_lock.create_broker(stream)?;
-    Ok(())
+    distribution_manager_lock.create_broker(stream)
 }
 
 fn handle_create_topic(
