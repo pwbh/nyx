@@ -1,6 +1,7 @@
 use std::{
+    io::{BufRead, BufReader},
     net::TcpStream,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 mod broker;
@@ -13,33 +14,37 @@ use self::{partition::Partition, topic::Topic};
 
 #[derive(Debug)]
 pub struct DistributionManager {
-    brokers: Vec<Broker>,
+    pub brokers: Vec<Broker>,
     topics: Vec<Arc<Mutex<Topic>>>,
 }
 
 impl DistributionManager {
     pub fn new() -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Self {
-            brokers: vec![],
+            brokers: Arc::new(Mutex::new(vec![])),
             topics: vec![],
         }))
     }
 
     // Need to rebalance if new broker is added
-    pub fn create_broker(&mut self, stream: TcpStream) -> Result<&Broker, String> {
+    pub fn create_broker(&mut self, stream: TcpStream) -> Result<String, String> {
+        let mut brokers_lock = self.brokers.lock().unwrap();
         let broker = Broker::from(stream)?;
-        println!("Broker {} connected.", broker.id);
-        self.brokers.push(broker);
-        self.rebalance();
-        let broker = self.brokers.last().ok_or(
+        brokers_lock.push(broker);
+        let broker_index = brokers_lock.len() - 1;
+        rebalance(&mut brokers_lock);
+        let broker = brokers_lock.last().ok_or(
             "Failed to get newly created broker (last item doesnt exist, no brokers found?)."
                 .to_string(),
         )?;
-        Ok(broker)
+        self.spawn_broker_reader(&broker, broker_index)?;
+        Ok(broker.id.clone())
     }
 
     pub fn create_topic(&mut self, topic_name: &str) -> Result<&Arc<Mutex<Topic>>, String> {
-        if self.brokers.len() == 0 {
+        let brokers_lock = self.brokers.lock().unwrap();
+
+        if brokers_lock.len() == 0 {
             return Err(
                 "No brokers have been found, please make sure at least one broker is connected."
                     .to_string(),
@@ -66,7 +71,9 @@ impl DistributionManager {
 
     // Need to rebalance if new partition is added to the broker
     pub fn create_partition(&mut self, topic_name: &str) -> Result<usize, String> {
-        if self.brokers.len() == 0 {
+        let mut brokers_lock = self.brokers.lock().unwrap();
+
+        if brokers_lock.len() == 0 {
             return Err(
                 "No brokers have been found, please make sure at least one broker is connected."
                     .to_string(),
@@ -87,7 +94,7 @@ impl DistributionManager {
 
             let partition = Partition::new(&topic, topic_lock.partition_count);
 
-            self.brokers.iter_mut().for_each(|b| {
+            brokers_lock.iter_mut().for_each(|b| {
                 // Replicate partition
                 let replication = Partition::replicate(&partition, replication_count);
                 b.partitions.push(replication);
@@ -102,15 +109,36 @@ impl DistributionManager {
         Ok(replication_count)
     }
 
-    fn rebalance(&mut self) {
-        for i in 0..self.brokers.len() {
-            let (a, b) = self.brokers.split_at_mut(i + 1);
+    fn spawn_broker_reader(&self, broker: &Broker, broker_index: usize) -> Result<(), String> {
+        let watch_stream = broker.stream.try_clone().map_err(|e| e.to_string())?;
 
-            let current_broker = &mut a[i];
+        let brokers = Arc::clone(&self.brokers);
 
-            for other_broker in b.iter_mut() {
-                balance_brokers(current_broker, other_broker);
+        std::thread::spawn(move || {
+            let mut reader = BufReader::new(watch_stream);
+            let mut buf = String::with_capacity(1024);
+
+            loop {
+                let size = reader.read_line(&mut buf).unwrap();
+                if size == 0 {
+                    let mut brokers_lock = brokers.lock().unwrap();
+                    brokers_lock.remove(broker_index);
+                    break;
+                }
             }
+        });
+        Ok(())
+    }
+}
+
+fn rebalance(brokers_lock: &mut MutexGuard<'_, Vec<Broker>>) {
+    for i in 0..brokers_lock.len() {
+        let (a, b) = brokers_lock.split_at_mut(i + 1);
+
+        let current_broker = &mut a[i];
+
+        for other_broker in b.iter_mut() {
+            balance_brokers(current_broker, other_broker);
         }
     }
 }
@@ -249,19 +277,13 @@ mod tests {
             .create_partition(topic_name)
             .unwrap();
 
-        assert_eq!(
-            partition_replication_count_1,
-            distribution_manager_lock.brokers.len()
-        );
+        assert_eq!(partition_replication_count_1, brokers_lock.len());
 
         let partition_replication_count_2 = distribution_manager_lock
             .create_partition(topic_name)
             .unwrap();
 
-        assert_eq!(
-            partition_replication_count_2,
-            distribution_manager_lock.brokers.len()
-        );
+        assert_eq!(partition_replication_count_2, brokers_lock.len());
 
         let topic_name = "comments";
 
@@ -272,20 +294,14 @@ mod tests {
             .create_partition(topic_name)
             .unwrap();
 
-        assert_eq!(
-            partition_replication_count_3,
-            distribution_manager_lock.brokers.len()
-        );
+        assert_eq!(partition_replication_count_3, brokers_lock.len());
 
         // Second partition for topic 'comments'
         let partition_replication_count_4 = distribution_manager_lock
             .create_partition(topic_name)
             .unwrap();
 
-        assert_eq!(
-            partition_replication_count_4,
-            distribution_manager_lock.brokers.len()
-        );
+        assert_eq!(partition_replication_count_4, brokers_lock.len());
 
         let topic_name = "friend_requests";
 
@@ -296,10 +312,7 @@ mod tests {
             .create_partition("friend_requests")
             .unwrap();
 
-        assert_eq!(
-            partition_replication_count_5,
-            distribution_manager_lock.brokers.len()
-        );
+        assert_eq!(partition_replication_count_5, brokers_lock.len());
 
         // println!("{:#?}", distribution_manager_lock.brokers);
     }

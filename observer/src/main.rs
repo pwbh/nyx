@@ -1,9 +1,13 @@
 use clap::{arg, command};
-use observer::{distribution_manager::DistributionManager, Observer};
+use observer::{
+    distribution_manager::{Broker, DistributionManager},
+    Observer,
+};
 use shared_structures::Role;
 use std::{
     collections::HashMap,
     fs,
+    io::{BufRead, BufReader},
     net::TcpStream,
     path::PathBuf,
     sync::{Arc, Mutex},
@@ -40,7 +44,10 @@ fn main() -> Result<(), String> {
 
     // Open a TCP stream for brokers to connect to
 
-    println!("Observer is ready to accept brokers on port 3000");
+    println!(
+        "Observer is ready to accept brokers on port {}",
+        observer.listener.local_addr().unwrap().port()
+    );
 
     let mut streams_distribution_manager = observer.distribution_manager.clone();
 
