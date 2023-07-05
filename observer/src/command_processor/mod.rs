@@ -18,9 +18,11 @@ impl CommandProcessor {
     }
 
     pub fn process_raw_command(&mut self) -> Result<Command, String> {
-        std::io::stdin().read_line(&mut self.buf).unwrap();
+        std::io::stdin()
+            .read_line(&mut self.buf)
+            .map_err(|e| e.to_string())?;
         let command = Command::from(&self.buf)?;
-        self.add_history(self.buf.clone());
+        self.add_history((&self.buf).to_string());
         self.buf.clear();
         return Ok(command);
     }

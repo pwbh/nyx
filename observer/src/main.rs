@@ -1,23 +1,19 @@
 use clap::{arg, command};
+use observer::{distribution_manager::DistributionManager, Observer};
+use shared_structures::Role;
 use std::{
     collections::HashMap,
     fs,
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
     path::PathBuf,
     sync::{Arc, Mutex},
 };
 
-mod command_processor;
-mod distribution_manager;
-mod utils;
-
-use command_processor::CommandProcessor;
-
-use crate::distribution_manager::DistributionManager;
-
 const DEFAULT_CONFIG_PATH: &str = "./config/dev.properties";
 
 fn main() -> Result<(), String> {
+    let mut leader_address: Option<&str> = None;
+
     let matches = command!().arg(
         arg!(-f --follow <HOST> "Runs the Observer as a follower for leader located at <HOST>, Host MUST by booted without -f flag.")
         .required(false)
@@ -27,7 +23,7 @@ fn main() -> Result<(), String> {
     ).get_matches();
 
     match matches.get_one::<String>("follow") {
-        Some(host) => println!("Booting as a follower for {}", host),
+        Some(host) => leader_address = Some(host),
         None => println!("Booting as a leader"),
     };
 
@@ -39,6 +35,14 @@ fn main() -> Result<(), String> {
 
     println!("{:?}", config);
 
+    let role = if let Some(_) = leader_address {
+        Role::Leader
+    } else {
+        Role::Follower
+    };
+
+    let mut observer = Observer::new(role, 1);
+
     let listener = match TcpListener::bind("localhost:3000") {
         Ok(l) => l,
         Err(e) => return Err(e.to_string()),
@@ -48,25 +52,18 @@ fn main() -> Result<(), String> {
 
     println!("Observer is ready to accept brokers on port 3000");
 
-    let mut distribution_manager = DistributionManager::new();
-    let mut command_processor = CommandProcessor::new();
-
-    let streams_distribution_manager = distribution_manager.clone();
+    let mut streams_distribution_manager = observer.distribution_manager.clone();
 
     std::thread::spawn(move || loop {
         let stream = listener.incoming().next();
 
         if let Some(stream) = stream {
             match stream {
-                Ok(stream) => {
-                    let mut distribution_manager_lock =
-                        streams_distribution_manager.lock().unwrap();
-
-                    match distribution_manager_lock.create_broker(stream) {
-                        Ok(broker) => {}
-                        Err(e) => println!("Broker read/write error: {}", e),
-                    }
-                }
+                Ok(stream) => match handle_create_broker(&mut streams_distribution_manager, stream)
+                {
+                    Ok(()) => (),
+                    Err(e) => println!("{}", e),
+                },
                 Err(e) => println!("Failed to establish connection: {}", e),
             }
         }
@@ -74,12 +71,12 @@ fn main() -> Result<(), String> {
 
     // This will make sure our main thread will never exit until the user will issue an EXIT command by himself
     loop {
-        match command_processor.process_raw_command() {
+        match observer.command_processor.process_raw_command() {
             Ok(command) => match command {
-                command_processor::Command {
-                    name: command_processor::CommandName::Create,
+                observer::command_processor::Command {
+                    name: observer::command_processor::CommandName::Create,
                     ..
-                } => match handle_create_command(&mut distribution_manager, &command) {
+                } => match handle_create_command(&mut observer.distribution_manager, &command) {
                     Ok(()) => println!("\x1b[38;5;2mOK\x1b[0m"),
                     Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
                 },
@@ -91,7 +88,7 @@ fn main() -> Result<(), String> {
 
 fn handle_create_command(
     distribution_manager: &mut Arc<Mutex<DistributionManager>>,
-    command: &command_processor::Command,
+    command: &observer::command_processor::Command,
 ) -> Result<(), String> {
     let mut arguments_iter = command.arguments.iter();
 
@@ -105,6 +102,15 @@ fn handle_create_command(
         },
         None => Err("Entity type was not provided.".to_string()),
     }
+}
+
+fn handle_create_broker(
+    distribution_manager: &mut Arc<Mutex<DistributionManager>>,
+    stream: TcpStream,
+) -> Result<(), String> {
+    let mut distribution_manager_lock = distribution_manager.lock().unwrap();
+    distribution_manager_lock.create_broker(stream)?;
+    Ok(())
 }
 
 fn handle_create_topic(
