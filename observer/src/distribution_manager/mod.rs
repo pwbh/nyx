@@ -196,6 +196,7 @@ mod tests {
         mock_connecting_broker(&addr);
         mock_connecting_broker(&addr);
 
+        // Simulate acceptence of brokers
         for _ in 0..3 {
             let stream = listener.incoming().next().unwrap().unwrap();
             println!("{:?}", stream);
