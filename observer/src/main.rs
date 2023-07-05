@@ -4,7 +4,7 @@ use shared_structures::Role;
 use std::{
     collections::HashMap,
     fs,
-    net::{TcpListener, TcpStream},
+    net::TcpStream,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -12,8 +12,6 @@ use std::{
 const DEFAULT_CONFIG_PATH: &str = "./config/dev.properties";
 
 fn main() -> Result<(), String> {
-    let mut leader_address: Option<&str> = None;
-
     let matches = command!().arg(
         arg!(-f --follow <HOST> "Runs the Observer as a follower for leader located at <HOST>, Host MUST by booted without -f flag.")
         .required(false)
@@ -22,10 +20,7 @@ fn main() -> Result<(), String> {
         .default_value(DEFAULT_CONFIG_PATH)
     ).get_matches();
 
-    match matches.get_one::<String>("follow") {
-        Some(host) => leader_address = Some(host),
-        None => println!("Booting as a leader"),
-    };
+    let leader = matches.get_one::<String>("follow");
 
     let config_path = matches.get_one::<String>("config").unwrap();
     let config = match load_config(config_path.into()) {
@@ -35,18 +30,13 @@ fn main() -> Result<(), String> {
 
     println!("{:?}", config);
 
-    let role = if leader_address.is_none() {
+    let role = if leader.is_none() {
         Role::Leader
     } else {
         Role::Follower
     };
 
-    let mut observer = Observer::new(role, 1);
-
-    let listener = match TcpListener::bind("localhost:3000") {
-        Ok(l) => l,
-        Err(e) => return Err(e.to_string()),
-    };
+    let mut observer = Observer::new(role, 1)?;
 
     // Open a TCP stream for brokers to connect to
 
@@ -55,7 +45,7 @@ fn main() -> Result<(), String> {
     let mut streams_distribution_manager = observer.distribution_manager.clone();
 
     std::thread::spawn(move || loop {
-        let stream = listener.incoming().next();
+        let stream = observer.listener.incoming().next();
 
         if let Some(stream) = stream {
             match stream {
