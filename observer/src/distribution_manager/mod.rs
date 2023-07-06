@@ -133,8 +133,37 @@ impl DistributionManager {
     }
 }
 
-// TODO: When rebalancing, take into account the partition replica factor which is non-exsistent yet.
-// thus rebalancing is not working in the intended way yet.
+/*
+TODO: When rebalancing, take into account the partition replica factor which is non-exsistent yet.
+At the moment, rebalancing is not working in the intended way yet. Below is a cluster rebalancing with partition replica factor of 2.
+replica factor should be configured in the config file.
+
+   Cluster:
+  Broker-1
+  └─ Partition 0 of my_topic1 (Replica 1)
+  └─ Partition 1 of my_topic1 (Replica 2)
+  └─ Partition 0 of my_topic2 (Replica 1)
+  └─ Partition 1 of my_topic2 (Replica 2)
+  └─ Partition 0 of my_topic3 (Replica 1)
+  └─ Partition 1 of my_topic3 (Replica 2)
+
+  Broker-2
+  └─ Partition 2 of my_topic1 (Replica 1)
+  └─ Partition 3 of my_topic1 (Replica 2)
+  └─ Partition 2 of my_topic2 (Replica 1)
+  └─ Partition 3 of my_topic2 (Replica 2)
+  └─ Partition 2 of my_topic3 (Replica 1)
+  └─ Partition 3 of my_topic3 (Replica 2)
+
+  Broker-3
+  └─ Partition 0 of my_topic1 (Replica 2)
+  └─ Partition 1 of my_topic1 (Replica 1)
+  └─ Partition 0 of my_topic2 (Replica 2)
+  └─ Partition 1 of my_topic2 (Replica 1)
+  └─ Partition 0 of my_topic3 (Replica 2)
+  └─ Partition 1 of my_topic3 (Replica 1)
+
+*/
 fn rebalance(brokers_lock: &mut MutexGuard<'_, Vec<Broker>>) {
     for i in 0..brokers_lock.len() {
         let (a, b) = brokers_lock.split_at_mut(i + 1);
