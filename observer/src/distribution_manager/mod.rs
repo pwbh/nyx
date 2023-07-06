@@ -96,6 +96,9 @@ impl DistributionManager {
                 replication_count += 1;
             });
 
+            // Need to add partition replicas
+            rebalance(&mut brokers_lock);
+
             // begin leadership race among topic's partitions
         } else {
             return Err(format!("Topic `{}` doesn't exist.", topic_name));
@@ -130,6 +133,8 @@ impl DistributionManager {
     }
 }
 
+// TODO: When rebalancing, take into account the partition replica factor which is non-exsistent yet.
+// thus rebalancing is not working in the intended way yet.
 fn rebalance(brokers_lock: &mut MutexGuard<'_, Vec<Broker>>) {
     for i in 0..brokers_lock.len() {
         let (a, b) = brokers_lock.split_at_mut(i + 1);
@@ -343,6 +348,6 @@ mod tests {
             distribution_manager_lock.brokers.lock().unwrap().len()
         );
 
-        // println!("{:#?}", distribution_manager_lock.brokers);
+        println!("{:#?}", distribution_manager_lock.brokers);
     }
 }
