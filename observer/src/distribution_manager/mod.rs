@@ -38,7 +38,7 @@ impl DistributionManager {
         self.spawn_broker_reader(&broker)?;
         let broker_id = broker.id.clone();
         brokers_lock.push(broker);
-        rebalance(&mut brokers_lock);
+        //  rebalance(&mut brokers_lock);
         Ok(broker_id)
     }
 
@@ -100,8 +100,13 @@ impl DistributionManager {
                 replication_count += 1;
             });
 
+            let replica_factor = self
+                .config
+                .get_number("replica_factor")
+                .ok_or("Replica factor is not defined in the config, action aborted.")?;
+
             // Need to add partition replicas
-            rebalance(&mut brokers_lock);
+            replicate_partitions(&mut brokers_lock, *replica_factor, &partition);
 
             // begin leadership race among topic's partitions
         } else {
@@ -168,30 +173,32 @@ replica factor should be configured in the config file.
   └─ Partition 1 of my_topic3 (Replica 1)
 
 */
-fn rebalance(brokers_lock: &mut MutexGuard<'_, Vec<Broker>>) {
-    for i in 0..brokers_lock.len() {
-        let (a, b) = brokers_lock.split_at_mut(i + 1);
-
-        let current_broker = &mut a[i];
-
-        for other_broker in b.iter_mut() {
-            balance_brokers(current_broker, other_broker);
-        }
+fn replicate_partitions(
+    brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
+    replica_factor: i32,
+    partition: &Partition,
+) {
+    for replica_count in 1..=replica_factor {
+        let least_distributed_broker = get_least_distributed_broker(brokers_lock);
+        let replica = Partition::replicate(partition, replica_count as usize);
+        least_distributed_broker.partitions.push(replica);
     }
 }
 
-fn balance_brokers(current_broker: &mut Broker, other_broker: &mut Broker) {
-    for current_partition in current_broker.partitions.iter() {
-        let partition = other_broker
-            .partitions
-            .iter()
-            .find(|p| current_partition.id == p.id);
+fn get_least_distributed_broker<'a>(
+    brokers_lock: &'a mut MutexGuard<'_, Vec<Broker>>,
+) -> &'a mut Broker {
+    let mut current_smallest = brokers_lock[0].partitions.len();
+    let mut current_index = 0;
 
-        if let None = partition {
-            let fresh_partition = Partition::from(current_partition);
-            other_broker.partitions.push(fresh_partition);
+    for (i, b) in brokers_lock.iter().enumerate() {
+        if current_smallest > b.partitions.len() {
+            current_smallest = b.partitions.len();
+            current_index = i;
         }
     }
+
+    return &mut brokers_lock[current_index];
 }
 
 #[cfg(test)]

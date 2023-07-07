@@ -11,7 +11,7 @@ pub struct Partition {
     pub topic: Arc<Mutex<Topic>>,
     pub role: Role,
     partition_number: usize,
-    replica_number: usize,
+    replica_count: usize,
 }
 
 impl Partition {
@@ -22,7 +22,7 @@ impl Partition {
             topic: topic.clone(),
             role: Role::Follower,
             partition_number,
-            replica_number: 0,
+            replica_count: 0,
         }
     }
 
@@ -34,10 +34,10 @@ impl Partition {
         }
     }
 
-    pub fn replicate(partition: &Self, replica_number: usize) -> Self {
+    pub fn replicate(partition: &Self, replica_count: usize) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
-            replica_number,
+            replica_count,
             ..partition.clone()
         }
     }

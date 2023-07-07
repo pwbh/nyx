@@ -29,7 +29,7 @@ fn main() -> Result<(), String> {
         Role::Follower
     };
 
-    let mut observer = Observer::new(&config_path, role, 1)?;
+    let mut observer = Observer::new(&config_path, role)?;
 
     // Open a TCP stream for brokers to connect to
 

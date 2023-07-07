@@ -21,14 +21,13 @@ pub const PROD_CONFIG: &str = "prod.properties";
 pub struct Observer {
     id: String,
     role: Role,
-    replica_number: u32,
     pub listener: TcpListener,
     pub distribution_manager: Arc<Mutex<DistributionManager>>,
     pub command_processor: CommandProcessor,
 }
 
 impl Observer {
-    pub fn new(config_path: &str, role: Role, replica_number: u32) -> Result<Self, String> {
+    pub fn new(config_path: &str, role: Role) -> Result<Self, String> {
         let config = Config::from(config_path.into())?;
 
         println!("{:?}", config);
@@ -47,7 +46,6 @@ impl Observer {
         Ok(Self {
             id: Uuid::new_v4().to_string(),
             role,
-            replica_number,
             distribution_manager,
             command_processor,
             listener,
