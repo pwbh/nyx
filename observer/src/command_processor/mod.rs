@@ -21,6 +21,11 @@ impl CommandProcessor {
         std::io::stdin()
             .read_line(&mut self.buf)
             .map_err(|e| e.to_string())?;
+
+        if self.buf.trim().len() == 0 {
+            return Err("Empty command".to_string());
+        }
+
         let command = Command::from(&self.buf)?;
         self.add_history((&self.buf).to_string());
         self.buf.clear();
