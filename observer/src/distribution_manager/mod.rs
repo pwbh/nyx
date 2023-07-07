@@ -10,19 +10,23 @@ mod topic;
 
 pub use broker::Broker;
 
+use crate::config::Config;
+
 use self::{partition::Partition, topic::Topic};
 
 #[derive(Debug)]
 pub struct DistributionManager {
     pub brokers: Arc<Mutex<Vec<Broker>>>,
     topics: Vec<Arc<Mutex<Topic>>>,
+    config: Config,
 }
 
 impl DistributionManager {
-    pub fn new() -> Arc<Mutex<Self>> {
+    pub fn new(config: Config) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Self {
             brokers: Arc::new(Mutex::new(vec![])),
             topics: vec![],
+            config,
         }))
     }
 
@@ -134,7 +138,7 @@ impl DistributionManager {
 }
 
 /*
-TODO: When rebalancing, take into account the partition replica factor which is non-exsistent yet.
+TODO: When rebalancing, take into account the partition replica factor.
 At the moment, rebalancing is not working in the intended way yet. Below is a cluster rebalancing with partition replica factor of 2.
 replica factor should be configured in the config file.
 
@@ -196,6 +200,10 @@ mod tests {
 
     use super::*;
 
+    fn config_mock() -> Config {
+        Config::from("../config/dev.properties".into()).unwrap()
+    }
+
     fn mock_connecting_broker(addr: &str) -> TcpStream {
         let mut mock_stream = TcpStream::connect(&addr).unwrap();
         let payload = format!("{}\n", uuid::Uuid::new_v4().to_string());
@@ -218,8 +226,9 @@ mod tests {
         return mock_stream;
     }
 
-    fn setup_distribution_for_tests(port: &str) -> Arc<Mutex<DistributionManager>> {
-        let distribution_manager: Arc<Mutex<DistributionManager>> = DistributionManager::new();
+    fn setup_distribution_for_tests(config: Config, port: &str) -> Arc<Mutex<DistributionManager>> {
+        let distribution_manager: Arc<Mutex<DistributionManager>> =
+            DistributionManager::new(config);
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let addr = format!("localhost:{}", port);
@@ -244,7 +253,9 @@ mod tests {
 
     #[test]
     fn create_brokers_works_as_expected() {
-        let distribution_manager = DistributionManager::new();
+        let config = config_mock();
+        let distribution_manager: Arc<Mutex<DistributionManager>> =
+            DistributionManager::new(config);
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let addr = "localhost:8989";
@@ -263,7 +274,9 @@ mod tests {
 
     #[test]
     fn create_topic_fails_when_no_brokers() {
-        let distribution_manager = DistributionManager::new();
+        let config = config_mock();
+        let distribution_manager: Arc<Mutex<DistributionManager>> =
+            DistributionManager::new(config);
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let topic_name = "new_user_registered";
@@ -278,8 +291,10 @@ mod tests {
 
     #[test]
     fn create_topic_works_as_expected_when_brokers_exist() {
+        let config = config_mock();
+
         // After brokers have connnected to the Observer
-        let distribution_manager = setup_distribution_for_tests("5001");
+        let distribution_manager = setup_distribution_for_tests(config, "5001");
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let topic_name = "new_user_registered";
@@ -314,7 +329,9 @@ mod tests {
 
     #[test]
     fn craete_partition_distributes_replicas() {
-        let distribution_manager = setup_distribution_for_tests("5002");
+        let config = config_mock();
+
+        let distribution_manager = setup_distribution_for_tests(config, "5002");
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let topic_name = "notifications";

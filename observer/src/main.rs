@@ -1,36 +1,27 @@
 use clap::{arg, command};
-use observer::{config::Config, distribution_manager::DistributionManager, Observer};
+use observer::{distribution_manager::DistributionManager, Observer, DEV_CONFIG, PROD_CONFIG};
 use shared_structures::Role;
 use std::{
     net::TcpStream,
     sync::{Arc, Mutex},
 };
 
-const DEFAULT_CONFIG_PATH: &str = "./config/dev.properties";
-
 fn main() -> Result<(), String> {
+    let default_config_path_by_env = get_config_path_by_env();
     let matches = command!().arg(
         arg!(-f --follow <HOST> "Runs the Observer as a follower for leader located at <HOST>, Host MUST by booted without -f flag.")
         .required(false)
     ).arg(arg!(-c --config <PATH> "Config file to use when starting Observer.")
         .required(false)
-        .default_value(DEFAULT_CONFIG_PATH)
     ).get_matches();
 
     let leader = matches.get_one::<String>("follow");
-    let config_path = matches
-        .get_one::<String>("config")
-        .ok_or("Config path is not provided.".to_string())?;
 
-    let config = Config::from(config_path.into())?;
-
-    println!("{:?}", config);
-
-    let replica_factor = config
-        .get_number("replica_factor")
-        .ok_or("Replica factor is missing from config.".to_string())?;
-
-    println!("{}", replica_factor);
+    let config_path = if let Some(user_custom_config_path) = matches.get_one::<String>("config") {
+        user_custom_config_path
+    } else {
+        &default_config_path_by_env
+    };
 
     let role = if leader.is_none() {
         Role::Leader
@@ -38,7 +29,7 @@ fn main() -> Result<(), String> {
         Role::Follower
     };
 
-    let mut observer = Observer::new(role, 1)?;
+    let mut observer = Observer::new(&config_path, role, 1)?;
 
     // Open a TCP stream for brokers to connect to
 
@@ -79,6 +70,16 @@ fn main() -> Result<(), String> {
             Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
         };
     }
+}
+
+fn get_config_path_by_env() -> String {
+    let file_name = if cfg!(debug_assertions) {
+        DEV_CONFIG
+    } else {
+        PROD_CONFIG
+    };
+
+    format!("./config/{}", file_name)
 }
 
 fn handle_create_command(
