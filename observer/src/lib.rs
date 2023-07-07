@@ -1,3 +1,9 @@
+pub mod command_processor;
+pub mod config;
+pub mod distribution_manager;
+
+mod utils;
+
 use std::{
     net::TcpListener,
     sync::{Arc, Mutex},
@@ -7,10 +13,6 @@ use command_processor::CommandProcessor;
 use distribution_manager::DistributionManager;
 use shared_structures::Role;
 use uuid::Uuid;
-
-pub mod command_processor;
-pub mod distribution_manager;
-mod utils;
 
 pub struct Observer {
     id: String,

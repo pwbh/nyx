@@ -1,11 +1,8 @@
 use clap::{arg, command};
-use observer::{distribution_manager::DistributionManager, Observer};
+use observer::{config::Config, distribution_manager::DistributionManager, Observer};
 use shared_structures::Role;
 use std::{
-    collections::HashMap,
-    fs,
     net::TcpStream,
-    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
@@ -21,14 +18,19 @@ fn main() -> Result<(), String> {
     ).get_matches();
 
     let leader = matches.get_one::<String>("follow");
+    let config_path = matches
+        .get_one::<String>("config")
+        .ok_or("Config path is not provided.".to_string())?;
 
-    let config_path = matches.get_one::<String>("config").unwrap();
-    let config = match load_config(config_path.into()) {
-        Ok(c) => c,
-        Err(e) => return Err(e),
-    };
+    let config = Config::from(config_path.into())?;
 
     println!("{:?}", config);
+
+    let replica_factor = config
+        .get_number("replica_factor")
+        .ok_or("Replica factor is missing from config.".to_string())?;
+
+    println!("{}", replica_factor);
 
     let role = if leader.is_none() {
         Role::Leader
@@ -122,49 +124,4 @@ fn handle_create_partition(
     let mut distribution_manager_lock = distribution_manager.lock().unwrap();
     distribution_manager_lock.create_partition(topic_name)?;
     Ok(())
-}
-
-#[derive(Debug)]
-enum Value {
-    String(String),
-    Number(i32),
-    Float(f32),
-}
-
-fn load_config(path: PathBuf) -> Result<HashMap<String, Value>, String> {
-    let mut config = HashMap::new();
-
-    let content = match fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(e) => return Err(e.to_string()),
-    };
-
-    for line in content.lines() {
-        if line.chars().next().unwrap() == '#' {
-            continue;
-        }
-
-        let split: Vec<&str> = line.split_terminator("=").collect();
-
-        if split.len() != 2 {
-            return Err("property format is incorrect, should be key=value".to_string());
-        }
-
-        let key = split[0].to_string();
-        let value = if let Ok(f) = split[1].parse::<f32>() {
-            if split[1].contains(".") {
-                Value::Float(f)
-            } else {
-                Value::Number(split[1].parse::<i32>().unwrap())
-            }
-        } else if let Ok(i) = split[1].parse::<i32>() {
-            Value::Number(i)
-        } else {
-            Value::String(split[1].to_string())
-        };
-
-        config.entry(key).or_insert(value);
-    }
-
-    return Ok(config);
 }
