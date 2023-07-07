@@ -1,5 +1,6 @@
 pub enum CommandName {
     Create,
+    List,
 }
 
 pub struct Command {
@@ -14,6 +15,7 @@ impl Command {
 
         let name = match command {
             "CREATE" => CommandName::Create,
+            "LIST" => CommandName::List,
             _ => return Err("unrecognized command has been passed.".to_string()),
         };
 

@@ -192,6 +192,8 @@ fn get_least_distributed_broker<'a>(
     let mut current_index = 0;
 
     for (i, b) in brokers_lock.iter().enumerate() {
+        // TODO: Make sure that if a replica has been added, that its not the same broker as previous one that the replica was added to
+        // We dont want B1 -> P1-R1 and P1-R2
         if current_smallest > b.partitions.len() {
             current_smallest = b.partitions.len();
             current_index = i;

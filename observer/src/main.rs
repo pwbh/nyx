@@ -1,5 +1,8 @@
 use clap::{arg, command};
-use observer::{distribution_manager::DistributionManager, Observer, DEV_CONFIG, PROD_CONFIG};
+use observer::{
+    distribution_manager::{self, DistributionManager},
+    Observer, DEV_CONFIG, PROD_CONFIG,
+};
 use shared_structures::Role;
 use std::{
     net::TcpStream,
@@ -66,6 +69,13 @@ fn main() -> Result<(), String> {
                     Ok(()) => println!("\x1b[38;5;2mOK\x1b[0m"),
                     Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
                 },
+                observer::command_processor::Command {
+                    name: observer::command_processor::CommandName::List,
+                    ..
+                } => match handle_list_command(&mut observer.distribution_manager, &command) {
+                    Ok(()) => println!("\x1b[38;5;2mOK\x1b[0m"),
+                    Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
+                },
             },
             Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
         };
@@ -82,6 +92,22 @@ fn get_config_path_by_env() -> String {
     format!("./config/{}", file_name)
 }
 
+fn handle_list_command(
+    distribution_manager: &mut Arc<Mutex<DistributionManager>>,
+    command: &observer::command_processor::Command,
+) -> Result<(), String> {
+    let distribution_manager_lock = distribution_manager.lock().unwrap();
+    let level = command.arguments.iter().next().unwrap();
+
+    if level == "ALL" {
+        println!("{:#?}", distribution_manager_lock.brokers);
+    } else {
+        return Err("Such depth is not supported".to_string());
+    }
+
+    Ok(())
+}
+
 fn handle_create_command(
     distribution_manager: &mut Arc<Mutex<DistributionManager>>,
     command: &observer::command_processor::Command,
@@ -89,7 +115,7 @@ fn handle_create_command(
     let mut arguments_iter = command.arguments.iter();
 
     match arguments_iter.next() {
-        Some(entity) => match entity.as_str() {
+        Some(entity) => match entity.trim() {
             "TOPIC" => handle_create_topic(distribution_manager, &arguments_iter.next().unwrap()),
             "PARTITION" => {
                 handle_create_partition(distribution_manager, &arguments_iter.next().unwrap())

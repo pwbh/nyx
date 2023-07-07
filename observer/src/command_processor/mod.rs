@@ -23,6 +23,7 @@ impl CommandProcessor {
             .map_err(|e| e.to_string())?;
 
         if self.buf.trim().len() == 0 {
+            self.buf.clear();
             return Err("Empty command".to_string());
         }
 
