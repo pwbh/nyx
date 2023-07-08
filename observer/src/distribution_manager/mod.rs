@@ -83,7 +83,10 @@ impl DistributionManager {
             t.name == *topic_name
         });
 
-        let mut replication_count = 0;
+        let replica_factor = self
+            .config
+            .get_number("replica_factor")
+            .ok_or("Replica factor is not defined in the config, action aborted.")?;
 
         if let Some(topic) = topic {
             let mut topic_lock = topic.lock().unwrap();
@@ -91,11 +94,6 @@ impl DistributionManager {
             topic_lock.partition_count += 1;
 
             let partition = Partition::new(&topic, topic_lock.partition_count);
-
-            let replica_factor = self
-                .config
-                .get_number("replica_factor")
-                .ok_or("Replica factor is not defined in the config, action aborted.")?;
 
             // Need to add partition replicas
             replicate_partitions(&mut brokers_lock, *replica_factor, &partition);
@@ -105,7 +103,7 @@ impl DistributionManager {
             return Err(format!("Topic `{}` doesn't exist.", topic_name));
         }
 
-        Ok(replication_count)
+        Ok(*replica_factor as usize)
     }
 
     fn spawn_broker_reader(&self, broker: &Broker) -> Result<(), String> {
