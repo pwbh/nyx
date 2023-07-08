@@ -347,6 +347,8 @@ mod tests {
     fn craete_partition_distributes_replicas() {
         let config = config_mock();
 
+        let replica_factor = config.get_number("replica_factor").unwrap().clone();
+
         let distribution_manager = setup_distribution_for_tests(config, "5002");
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
@@ -358,19 +360,13 @@ mod tests {
             .create_partition(topic_name)
             .unwrap();
 
-        assert_eq!(
-            partition_replication_count_1,
-            distribution_manager_lock.brokers.lock().unwrap().len()
-        );
+        assert_eq!(partition_replication_count_1, replica_factor as usize);
 
         let partition_replication_count_2 = distribution_manager_lock
             .create_partition(topic_name)
             .unwrap();
 
-        assert_eq!(
-            partition_replication_count_2,
-            distribution_manager_lock.brokers.lock().unwrap().len()
-        );
+        assert_eq!(partition_replication_count_2, replica_factor as usize);
 
         let topic_name = "comments";
 
@@ -381,20 +377,14 @@ mod tests {
             .create_partition(topic_name)
             .unwrap();
 
-        assert_eq!(
-            partition_replication_count_3,
-            distribution_manager_lock.brokers.lock().unwrap().len()
-        );
+        assert_eq!(partition_replication_count_3, replica_factor as usize);
 
         // Second partition for topic 'comments'
         let partition_replication_count_4 = distribution_manager_lock
             .create_partition(topic_name)
             .unwrap();
 
-        assert_eq!(
-            partition_replication_count_4,
-            distribution_manager_lock.brokers.lock().unwrap().len()
-        );
+        assert_eq!(partition_replication_count_4, replica_factor as usize);
 
         let topic_name = "friend_requests";
 
@@ -405,10 +395,7 @@ mod tests {
             .create_partition("friend_requests")
             .unwrap();
 
-        assert_eq!(
-            partition_replication_count_5,
-            distribution_manager_lock.brokers.lock().unwrap().len()
-        );
+        assert_eq!(partition_replication_count_5, replica_factor as usize);
 
         println!("{:#?}", distribution_manager_lock.brokers);
     }
