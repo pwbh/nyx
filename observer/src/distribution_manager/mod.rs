@@ -34,7 +34,6 @@ impl DistributionManager {
     pub fn create_broker(&mut self, stream: TcpStream) -> Result<String, String> {
         let mut brokers_lock = self.brokers.lock().unwrap();
         let broker = Broker::from(stream)?;
-        println!("{:?}", broker);
         self.spawn_broker_reader(&broker)?;
         let broker_id = broker.id.clone();
         brokers_lock.push(broker);
@@ -92,13 +91,6 @@ impl DistributionManager {
             topic_lock.partition_count += 1;
 
             let partition = Partition::new(&topic, topic_lock.partition_count);
-
-            brokers_lock.iter_mut().for_each(|b| {
-                // Replicate partition
-                let replication = Partition::replicate(&partition, replication_count);
-                b.partitions.push(replication);
-                replication_count += 1;
-            });
 
             let replica_factor = self
                 .config
@@ -190,13 +182,23 @@ fn get_least_distributed_broker<'a>(
 ) -> &'a mut Broker {
     let mut current_smallest = brokers_lock[0].partitions.len();
     let mut current_index = 0;
+    let mut last_pushed_broker: Option<&Broker> = None;
 
     for (i, b) in brokers_lock.iter().enumerate() {
-        // TODO: Make sure that if a replica has been added, that its not the same broker as previous one that the replica was added to
-        // We dont want B1 -> P1-R1 and P1-R2
-        if current_smallest > b.partitions.len() {
-            current_smallest = b.partitions.len();
-            current_index = i;
+        // TODO: Make sure that if a replica has been added, that its not the same broker
+        // as previous one that the replica was added to We dont want B1 -> P1-R1 and P1-R2
+        if let Some(broker) = last_pushed_broker {
+            if current_smallest > b.partitions.len() && broker.id != b.id {
+                current_smallest = b.partitions.len();
+                current_index = i;
+                last_pushed_broker = Some(b);
+            }
+        } else {
+            if current_smallest > b.partitions.len() {
+                current_smallest = b.partitions.len();
+                current_index = i;
+                last_pushed_broker = Some(b);
+            }
         }
     }
 
@@ -251,7 +253,6 @@ mod tests {
         // Simulate acceptence of brokers
         for _ in 0..3 {
             let stream = listener.incoming().next().unwrap().unwrap();
-            println!("{:?}", stream);
             distribution_manager_lock.create_broker(stream).unwrap();
         }
 
