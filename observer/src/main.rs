@@ -1,8 +1,5 @@
 use clap::{arg, command};
-use observer::{
-    distribution_manager::{self, DistributionManager},
-    Observer, DEV_CONFIG, PROD_CONFIG,
-};
+use observer::{distribution_manager::DistributionManager, Observer, DEV_CONFIG, PROD_CONFIG};
 use shared_structures::Role;
 use std::{
     net::TcpStream,

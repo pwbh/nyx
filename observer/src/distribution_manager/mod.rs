@@ -168,10 +168,18 @@ fn replicate_partitions(
     replica_factor: i32,
     partition: &Partition,
 ) {
-    for replica_count in 1..=replica_factor {
+    let total_available_brokers = brokers_lock.len();
+
+    if total_available_brokers == 1 {
         let least_distributed_broker = get_least_distributed_broker(brokers_lock);
-        let replica = Partition::replicate(partition, replica_count as usize);
+        let replica = Partition::replicate(partition, 1);
         least_distributed_broker.partitions.push(replica);
+    } else {
+        for replica_count in 1..=replica_factor {
+            let least_distributed_broker = get_least_distributed_broker(brokers_lock);
+            let replica = Partition::replicate(partition, replica_count as usize);
+            least_distributed_broker.partitions.push(replica);
+        }
     }
 }
 
