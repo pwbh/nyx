@@ -191,8 +191,11 @@ fn get_least_distributed_broker<'a>(
     let mut last_pushed_broker: Option<&Broker> = None;
 
     for (i, b) in brokers_lock.iter().enumerate() {
-        // TODO: Make sure that if a replica has been added, that its not the same broker
-        // as previous one that the replica was added to We dont want B1 -> P1-R1 and P1-R2
+        // TODO: What should the the observer do if there is only 1 broker at this time, but replica factor is set to >1?
+        // Save unreplicated counts and when new broker has been added make sure to replicate to the amount of replica factor
+        // partitions that has not been replicated yet.
+        // Also make sure to do this before starting replicate new replications.
+        // So basically on addition of each new Broker to the observer.
         if let Some(broker) = last_pushed_broker {
             if current_smallest > b.partitions.len() && broker.id != b.id {
                 current_smallest = b.partitions.len();
