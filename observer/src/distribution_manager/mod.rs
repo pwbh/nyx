@@ -39,7 +39,8 @@ impl DistributionManager {
         self.spawn_broker_reader(&broker)?;
         let broker_id = broker.id.clone();
         brokers_lock.push(broker);
-        //  rebalance(&mut brokers_lock);
+        // Need to replicate the pending partitions if there is any
+        replicate_pending_partitions(&mut self.pending_replication_partitions, &mut brokers_lock);
         Ok(broker_id)
     }
 
@@ -97,12 +98,6 @@ impl DistributionManager {
 
             let partition = Partition::new(&topic, topic_lock.partition_count);
 
-            // Need to replicate the pending partitions first
-            replicate_pending_partitions(
-                &mut self.pending_replication_partitions,
-                &mut brokers_lock,
-            );
-
             // Need to add partition replicas
             replicate_partitions(
                 &mut self.pending_replication_partitions,
@@ -153,10 +148,12 @@ fn replicate_pending_partitions(
     for (replications_needed, partition) in pending_replication_partitions.iter() {
         let last_replica_count = partition.replica_count;
 
-        for replica_count in 0..*replications_needed {
+        for replica_count in 1..=*replications_needed {
             let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition);
-            let replica = Partition::replicate(partition, last_replica_count + replica_count);
-            least_distributed_broker.partitions.push(replica);
+            if let Some(broker) = least_distributed_broker {
+                let replica = Partition::replicate(partition, last_replica_count + replica_count);
+                broker.partitions.push(replica);
+            }
         }
     }
 }
@@ -214,8 +211,10 @@ fn replicate_partitions(
     //  } else {
     for replica_count in 1..=replica_factor {
         let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition);
-        let replica = Partition::replicate(partition, replica_count);
-        least_distributed_broker.partitions.push(replica);
+        if let Some(broker) = least_distributed_broker {
+            let replica = Partition::replicate(partition, replica_count);
+            broker.partitions.push(replica);
+        }
     }
     //  }
 }
@@ -236,34 +235,14 @@ fn get_clean_broker_from_partition_index<'a>(
 fn get_least_distributed_broker<'a>(
     brokers_lock: &'a mut MutexGuard<'_, Vec<Broker>>,
     partition: &'a Partition,
-) -> &'a mut Broker {
-    let mut current_smallest = brokers_lock[0].partitions.len();
-    let mut current_index = 0;
-    let mut last_pushed_broker: Option<&Broker> = None;
-
+) -> Option<&'a mut Broker> {
     if let Some(clean_from_partition_broker_index) =
         get_clean_broker_from_partition_index(brokers_lock, partition)
     {
-        return &mut brokers_lock[clean_from_partition_broker_index];
+        return Some(&mut brokers_lock[clean_from_partition_broker_index]);
     }
 
-    for (i, b) in brokers_lock.iter().enumerate() {
-        if let Some(broker) = last_pushed_broker {
-            if current_smallest > b.partitions.len() && broker.id != b.id {
-                current_smallest = b.partitions.len();
-                current_index = i;
-                last_pushed_broker = Some(b);
-            }
-        } else {
-            if current_smallest > b.partitions.len() {
-                current_smallest = b.partitions.len();
-                current_index = i;
-                last_pushed_broker = Some(b);
-            }
-        }
-    }
-
-    return &mut brokers_lock[current_index];
+    return None;
 }
 
 #[cfg(test)]
