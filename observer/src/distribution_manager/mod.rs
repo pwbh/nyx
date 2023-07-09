@@ -19,6 +19,7 @@ pub struct DistributionManager {
     pub brokers: Arc<Mutex<Vec<Broker>>>,
     topics: Vec<Arc<Mutex<Topic>>>,
     config: Config,
+    pending_replication_partitions: Vec<(usize, Partition)>,
 }
 
 impl DistributionManager {
@@ -27,6 +28,7 @@ impl DistributionManager {
             brokers: Arc::new(Mutex::new(vec![])),
             topics: vec![],
             config,
+            pending_replication_partitions: vec![],
         }))
     }
 
@@ -95,8 +97,19 @@ impl DistributionManager {
 
             let partition = Partition::new(&topic, topic_lock.partition_count);
 
+            // Need to replicate the pending partitions first
+            replicate_pending_partitions(
+                &mut self.pending_replication_partitions,
+                &mut brokers_lock,
+            );
+
             // Need to add partition replicas
-            replicate_partitions(&mut brokers_lock, *replica_factor, &partition);
+            replicate_partitions(
+                &mut self.pending_replication_partitions,
+                &mut brokers_lock,
+                *replica_factor as usize,
+                &partition,
+            );
 
             // begin leadership race among topic's partitions
         } else {
@@ -132,6 +145,22 @@ impl DistributionManager {
     }
 }
 
+// TODO: What happens when a broker has lost connection? We need to find new leader.
+fn replicate_pending_partitions(
+    pending_replication_partitions: &Vec<(usize, Partition)>,
+    brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
+) {
+    for (replications_needed, partition) in pending_replication_partitions.iter() {
+        let last_replica_count = partition.replica_count;
+
+        for replica_count in 0..*replications_needed {
+            let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition);
+            let replica = Partition::replicate(partition, last_replica_count + replica_count);
+            least_distributed_broker.partitions.push(replica);
+        }
+    }
+}
+
 /*
 TODO: When rebalancing, take into account the partition replica factor.
 At the moment, rebalancing is not working in the intended way yet. Below is a cluster rebalancing with partition replica factor of 2.
@@ -164,38 +193,61 @@ replica factor should be configured in the config file.
 
 */
 fn replicate_partitions(
+    pending_replication_partitions: &mut Vec<(usize, Partition)>,
     brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
-    replica_factor: i32,
+    replica_factor: usize,
     partition: &Partition,
 ) {
     let total_available_brokers = brokers_lock.len();
+    let future_replications_required = replica_factor as i32 - total_available_brokers as i32;
 
-    if total_available_brokers == 1 {
-        let least_distributed_broker = get_least_distributed_broker(brokers_lock);
-        let replica = Partition::replicate(partition, 1);
+    if future_replications_required > 0 {
+        // total_available_brokers - is the next replication that should be added by the count.
+        let replica = Partition::replicate(partition, total_available_brokers);
+        pending_replication_partitions.push((future_replications_required as usize, replica));
+    }
+
+    //  if total_available_brokers == 1 {
+    //      let least_distributed_broker = get_least_distributed_broker(brokers_lock);
+    //      let replica = Partition::replicate(partition, 1);
+    //      least_distributed_broker.partitions.push(replica);
+    //  } else {
+    for replica_count in 1..=replica_factor {
+        let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition);
+        let replica = Partition::replicate(partition, replica_count);
         least_distributed_broker.partitions.push(replica);
-    } else {
-        for replica_count in 1..=replica_factor {
-            let least_distributed_broker = get_least_distributed_broker(brokers_lock);
-            let replica = Partition::replicate(partition, replica_count as usize);
-            least_distributed_broker.partitions.push(replica);
+    }
+    //  }
+}
+
+fn get_clean_broker_from_partition_index<'a>(
+    brokers_lock: &'a mut MutexGuard<'_, Vec<Broker>>,
+    partition: &'a Partition,
+) -> Option<usize> {
+    for (i, b) in brokers_lock.iter().enumerate() {
+        if b.partitions.iter().all(|p| p.id != partition.id) {
+            return Some(i);
         }
     }
+
+    return None;
 }
 
 fn get_least_distributed_broker<'a>(
     brokers_lock: &'a mut MutexGuard<'_, Vec<Broker>>,
+    partition: &'a Partition,
 ) -> &'a mut Broker {
     let mut current_smallest = brokers_lock[0].partitions.len();
     let mut current_index = 0;
     let mut last_pushed_broker: Option<&Broker> = None;
 
+    if let Some(clean_from_partition_broker_index) =
+        get_clean_broker_from_partition_index(brokers_lock, partition)
+    {
+        return &mut brokers_lock[clean_from_partition_broker_index];
+    }
+
     for (i, b) in brokers_lock.iter().enumerate() {
-        // TODO: What should the the observer do if there is only 1 broker at this time, but replica factor is set to >1?
-        // Save unreplicated counts and when new broker has been added make sure to replicate to the amount of replica factor
-        // partitions that has not been replicated yet.
-        // Also make sure to do this before starting replicate new replications.
-        // So basically on addition of each new Broker to the observer.
         if let Some(broker) = last_pushed_broker {
             if current_smallest > b.partitions.len() && broker.id != b.id {
                 current_smallest = b.partitions.len();
