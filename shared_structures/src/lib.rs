@@ -1,6 +1,6 @@
 #[derive(Clone, Copy, Debug)]
 pub enum Status {
-    PendingCreation,
+    Created,
     Crashed,
     Active,
 }

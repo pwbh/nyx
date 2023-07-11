@@ -9,10 +9,11 @@ mod partition;
 mod topic;
 
 pub use broker::Broker;
+pub use partition::Partition;
 
 use crate::config::Config;
 
-use self::{partition::Partition, topic::Topic};
+use self::topic::Topic;
 
 #[derive(Debug)]
 pub struct DistributionManager {
@@ -106,7 +107,10 @@ impl DistributionManager {
                 &partition,
             );
 
-            // begin leadership race among topic's partitions
+            // let create_partition = message::create_partition(&partition);
+            // TODO: broadcast(Message::CreatePartition { ..data });
+
+            // TODO: Should begin leadership race among replications of the Partition.
         } else {
             return Err(format!("Topic `{}` doesn't exist.", topic_name));
         }

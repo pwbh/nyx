@@ -18,7 +18,7 @@ impl Partition {
     pub fn new(topic: &Arc<Mutex<Topic>>, partition_number: usize) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
-            status: Status::PendingCreation,
+            status: Status::Created,
             topic: topic.clone(),
             role: Role::Follower,
             partition_number,
@@ -29,7 +29,7 @@ impl Partition {
     pub fn from(partition: &Self) -> Self {
         Self {
             id: uuid::Uuid::new_v4().to_string(),
-            status: Status::PendingCreation,
+            status: Status::Created,
             ..partition.clone()
         }
     }
