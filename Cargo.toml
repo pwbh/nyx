@@ -2,10 +2,10 @@
 members = ["broker", "observer", "shared_structures"]
 
 [workspace.package]
-name = "imp"
+name = "nyx"
 version = "0.1.0"
 edition = "2021"
-description = "Imp is a multi-threaded version of some what a Kafka"
+description = "Nyx is a multi-threaded version of some what a Kafka"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

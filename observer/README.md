@@ -2,7 +2,7 @@
 
 Observer is a program that sends messages to brokers connected to it. For example, when a new topic is created, Observer is responsible for distributing the partitions of the topic across the brokers for maximum fault tolerance.
 
-### Typical flow of starting Imp
+### Typical flow of starting Nyx
 
 1. The user launches three brokers.
    The brokers are in a state where they are looking for the observer with a specified host passed as a parameter. On development, we can start the broker using `cargo run --bin broker localhost:5555`. We assume that Observer runs on port 5555 locally. While Observer is shut down, the broker is just trying to connect to Observer in intervals (which can be customized).
