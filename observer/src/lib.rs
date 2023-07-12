@@ -1,4 +1,4 @@
-mod communication;
+mod broadcast;
 
 pub mod command_processor;
 pub mod config;

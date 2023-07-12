@@ -1,4 +1,4 @@
-use std::sync::MutexGuard;
+use std::{net::TcpStream, sync::MutexGuard};
 
 use shared_structures::Status;
 
@@ -8,24 +8,23 @@ pub enum Message<'a> {
     CreatePartition(&'a Partition),
 }
 
-pub struct Communication;
+pub struct Broadcast;
 
-impl Communication {
-    fn broadcast(&self, message: Message) -> Result<(), String> {
+impl Broadcast {
+    fn broadcast(stream: &TcpStream, message: Message) -> Result<(), String> {
         Ok(())
     }
 
     // This will broadcast to every broker the necessary command for the broker to execute the necessary command
     // here its Message::CreatePartition, with the relevant data
-    pub fn broadcast_partition<'a>(
-        &self,
+    pub fn create_partition<'a>(
         brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
         partition_id: &str,
     ) -> Result<(), String> {
         for broker in brokers_lock.iter_mut() {
             for p in broker.partitions.iter_mut() {
                 if p.id == partition_id {
-                    self.broadcast(Message::CreatePartition(&p))?;
+                    Self::broadcast(&broker.stream, Message::CreatePartition(&p))?;
                     // After successful creation of the partition on the broker,
                     // we can set its status on the observer to Active.
                     p.status = Status::Active;

@@ -11,7 +11,7 @@ mod topic;
 pub use broker::Broker;
 pub use partition::Partition;
 
-use crate::config::Config;
+use crate::{broadcast::Broadcast, config::Config};
 
 use self::topic::Topic;
 
@@ -100,15 +100,14 @@ impl DistributionManager {
             let partition = Partition::new(&topic, topic_lock.partition_count);
 
             // Need to add partition replicas
-            replicate_partitions(
+            replicate_partition(
                 &mut self.pending_replication_partitions,
                 &mut brokers_lock,
                 *replica_factor as usize,
                 &partition,
             );
 
-            // let create_partition = message::create_partition(&partition);
-            // TODO: broadcast(Message::CreatePartition { ..data });
+            Broadcast::create_partition(&mut brokers_lock, &partition.id)?;
 
             // TODO: Should begin leadership race among replications of the Partition.
         } else {
@@ -193,7 +192,7 @@ replica factor should be configured in the config file.
   └─ Partition 1 of my_topic3 (Replica 1)
 
 */
-fn replicate_partitions(
+fn replicate_partition(
     pending_replication_partitions: &mut Vec<(usize, Partition)>,
     brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
     replica_factor: usize,
