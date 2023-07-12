@@ -11,7 +11,7 @@ pub enum Message<'a> {
 pub struct Broadcast;
 
 impl Broadcast {
-    fn broadcast(stream: &TcpStream, message: Message) -> Result<(), String> {
+    pub fn broadcast_to(stream: &TcpStream, message: Message) -> Result<(), String> {
         Ok(())
     }
 
@@ -24,7 +24,7 @@ impl Broadcast {
         for broker in brokers_lock.iter_mut() {
             for p in broker.partitions.iter_mut() {
                 if p.id == partition_id {
-                    Self::broadcast(&broker.stream, Message::CreatePartition(&p))?;
+                    Self::broadcast_to(&broker.stream, Message::CreatePartition(&p))?;
                     // After successful creation of the partition on the broker,
                     // we can set its status on the observer to Active.
                     p.status = Status::Active;

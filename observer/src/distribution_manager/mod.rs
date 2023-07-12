@@ -145,7 +145,7 @@ impl DistributionManager {
 
 // TODO: What happens when a broker has lost connection? We need to find new leader.
 fn replicate_pending_partitions(
-    pending_replication_partitions: &Vec<(usize, Partition)>,
+    pending_replication_partitions: &[(usize, Partition)],
     brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
 ) {
     for (replications_needed, partition) in pending_replication_partitions.iter() {
