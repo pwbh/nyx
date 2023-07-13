@@ -1,4 +1,4 @@
-use std::{net::TcpStream, sync::MutexGuard};
+use std::{io::Write, net::TcpStream, sync::MutexGuard};
 
 use shared_structures::Status;
 
@@ -11,13 +11,21 @@ pub enum Message<'a> {
 pub struct Broadcast;
 
 impl Broadcast {
+    pub fn broadcast(streams: &mut [TcpStream], message: Message) -> Result<(), String> {
+        for stream in streams {
+            stream.write("test".as_bytes()).map_err(|e| e.to_string())?;
+        }
+
+        Ok(())
+    }
+
     pub fn broadcast_to(stream: &TcpStream, message: Message) -> Result<(), String> {
         Ok(())
     }
 
     // This will broadcast to every broker the necessary command for the broker to execute the necessary command
     // here its Message::CreatePartition, with the relevant data
-    pub fn create_partition<'a>(
+    pub fn create_partition(
         brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
         partition_id: &str,
     ) -> Result<(), String> {
