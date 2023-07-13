@@ -4,7 +4,7 @@ use shared_structures::{Role, Status};
 
 use super::topic::Topic;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Partition {
     pub id: String,
     pub status: Status,

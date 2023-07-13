@@ -4,8 +4,9 @@ use shared_structures::Status;
 
 use crate::distribution_manager::{Broker, Partition};
 
-pub enum Message<'a> {
-    CreatePartition(&'a Partition),
+#[derive(serde::Serialize, serde::Deserialize)]
+pub enum Message {
+    CreatePartition(Partition),
 }
 
 pub struct Broadcast;
@@ -13,14 +14,15 @@ pub struct Broadcast;
 impl Broadcast {
     pub fn broadcast(streams: &mut [TcpStream], message: Message) -> Result<(), String> {
         for stream in streams {
-            stream.write("test".as_bytes()).map_err(|e| e.to_string())?;
+            let payload = bincode::serialize(&message).map_err(|e| e.to_string())?;
+            stream.write(&payload).map_err(|e| e.to_string())?;
         }
-
         Ok(())
     }
 
     pub fn broadcast_to(stream: &mut TcpStream, message: Message) -> Result<(), String> {
-        stream.write("test".as_bytes()).map_err(|e| e.to_string())?;
+        let payload = bincode::serialize(&message).map_err(|e| e.to_string())?;
+        stream.write(&payload).map_err(|e| e.to_string())?;
         Ok(())
     }
 
@@ -33,7 +35,7 @@ impl Broadcast {
         for broker in brokers_lock.iter_mut() {
             for p in broker.partitions.iter_mut() {
                 if p.id == partition_id {
-                    Self::broadcast_to(&mut broker.stream, Message::CreatePartition(&p))?;
+                    Self::broadcast_to(&mut broker.stream, Message::CreatePartition(p.clone()))?;
                     // After successful creation of the partition on the broker,
                     // we can set its status on the observer to Active.
                     p.status = Status::Active;

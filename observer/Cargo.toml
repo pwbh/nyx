@@ -11,3 +11,5 @@ shared_structures = { path = "../shared_structures" }
 
 clap.workspace = true
 uuid.workspace = true
+bincode.workspace = true
+serde.workspace = true

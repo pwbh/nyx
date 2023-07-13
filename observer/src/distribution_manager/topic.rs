@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Topic {
     pub name: String,
     pub partition_count: usize,
