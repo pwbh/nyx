@@ -1,8 +1,5 @@
 use clap::{arg, command};
-use observer::{
-    constants::ALL_LEVEL, distribution_manager::DistributionManager, Observer, DEV_CONFIG,
-    PROD_CONFIG,
-};
+use observer::{distribution_manager::DistributionManager, Observer, DEV_CONFIG, PROD_CONFIG};
 use shared_structures::Role;
 use std::{
     net::TcpStream,
@@ -99,7 +96,7 @@ fn handle_list_command(
     let distribution_manager_lock = distribution_manager.lock().unwrap();
     let level = command.arguments.iter().next().unwrap();
 
-    if level == ALL_LEVEL {
+    if level == "ALL" {
         println!("{:#?}", distribution_manager_lock.brokers);
     } else {
         return Err("Such depth is not supported".to_string());
