@@ -2,7 +2,6 @@ mod broadcast;
 
 pub mod command_processor;
 pub mod config;
-pub mod constants;
 pub mod distribution_manager;
 
 use std::{
