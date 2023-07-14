@@ -50,11 +50,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         if exit {
             break;
         }
+
         let size = reader.read_line(&mut buf).map_err(|e| e.to_string())?;
+
         if size == 0 {
             println!("Connection with observer has been closed, exiting.");
             exit = true;
         }
+
+        println!("{}", buf);
+
         buf.clear();
     }
 

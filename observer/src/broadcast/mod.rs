@@ -12,13 +12,19 @@ impl Broadcast {
         message: Message<T>,
     ) -> Result<(), String> {
         for stream in streams {
-            let payload = serde_json::to_string(&message)
+            let mut payload = serde_json::to_string(&message)
                 .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
+
+            payload.push('\n');
+
             let bytes_written = stream
                 .write(payload.as_bytes())
                 .map_err(|e| e.to_string())?;
+
             if bytes_written == 0 {
-                return Err("0 bytes has been written, might be an error, plesae check".to_string());
+                return Err(
+                    "0 bytes have been written, might be an error, plesae check".to_string()
+                );
             }
         }
         Ok(())
@@ -28,15 +34,21 @@ impl Broadcast {
         stream: &mut TcpStream,
         message: Message<T>,
     ) -> Result<(), String> {
-        let payload = serde_json::to_string(&message)
+        let mut payload = serde_json::to_string(&message)
             .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
-        println!("Payload {:?}", payload);
+
+        payload.push('\n');
+
         let bytes_written = stream
             .write(payload.as_bytes())
             .map_err(|e| e.to_string())?;
+
+        println!("Written bytes: {}", bytes_written);
+
         if bytes_written == 0 {
-            return Err("0 bytes has been written, might be an error, plesae check".to_string());
+            return Err("0 bytes have been written, might be an error, plesae check".to_string());
         }
+
         Ok(())
     }
 
@@ -46,7 +58,6 @@ impl Broadcast {
         brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
         partition_id: &str,
     ) -> Result<(), String> {
-        println!("CREATING PARTITION");
         for broker in brokers_lock.iter_mut() {
             for p in broker.partitions.iter_mut() {
                 if p.id == partition_id {
