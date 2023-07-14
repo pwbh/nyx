@@ -7,7 +7,7 @@ use crate::distribution_manager::Broker;
 pub struct Broadcast;
 
 impl Broadcast {
-    pub fn broadcast<T: serde::Serialize>(
+    pub fn all<T: serde::Serialize>(
         streams: &mut [TcpStream],
         message: Message<T>,
     ) -> Result<(), String> {
@@ -24,7 +24,7 @@ impl Broadcast {
         Ok(())
     }
 
-    pub fn broadcast_to<T: serde::Serialize>(
+    pub fn to<T: serde::Serialize>(
         stream: &mut TcpStream,
         message: Message<T>,
     ) -> Result<(), String> {
@@ -50,7 +50,7 @@ impl Broadcast {
         for broker in brokers_lock.iter_mut() {
             for p in broker.partitions.iter_mut() {
                 if p.id == partition_id {
-                    Self::broadcast_to(&mut broker.stream, Message::CreatePartition(p.clone()))?;
+                    Self::to(&mut broker.stream, Message::CreatePartition(p.clone()))?;
                     // After successful creation of the partition on the broker,
                     // we can set its status on the observer to Active.
                     p.status = Status::Active;
