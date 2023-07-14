@@ -1,3 +1,3 @@
 # Nyx
 
-![Architecture](https://github.com/pwbh/imp/assets/127856937/5c9b5ad1-f009-452c-a504-73e82ce5b9aa)
+![Github README](https://github.com/pwbh/nyx/assets/127856937/c0edee7b-8e0a-4160-bc9c-3b0c4649238a)
