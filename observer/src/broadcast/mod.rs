@@ -1,4 +1,4 @@
-use std::{io::Write, net::TcpStream, sync::MutexGuard};
+use std::{io::Write, net::TcpStream};
 
 use shared_structures::{Message, Status};
 
@@ -54,20 +54,16 @@ impl Broadcast {
 
     // This will broadcast to every broker the necessary command for the broker to execute the necessary command
     // here its Message::CreatePartition, with the relevant data
-    pub fn create_partition(
-        brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
-        partition_id: &str,
-    ) -> Result<(), String> {
-        for broker in brokers_lock.iter_mut() {
-            for p in broker.partitions.iter_mut() {
-                if p.id == partition_id {
-                    Self::to(&mut broker.stream, Message::CreatePartition(p.clone()))?;
-                    // After successful creation of the partition on the broker,
-                    // we can set its status on the observer to Active.
-                    p.status = Status::Active;
-                }
+    pub fn create_partition(broker: &mut Broker, partition_id: &str) -> Result<(), String> {
+        for p in broker.partitions.iter_mut() {
+            if p.id == partition_id {
+                Self::to(&mut broker.stream, Message::CreatePartition(p.clone()))?;
+                // After successful creation of the partition on the broker,
+                // we can set its status on the observer to Active.
+                p.status = Status::Up;
             }
         }
+
         Ok(())
     }
 }

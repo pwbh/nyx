@@ -1,8 +1,8 @@
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Status {
     Created,
-    Crashed,
-    Active,
+    Down,
+    Up,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]

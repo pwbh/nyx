@@ -2,6 +2,7 @@ use std::{
     io::{BufRead, BufReader},
     net::TcpStream,
     sync::{Arc, Mutex, MutexGuard},
+    time::Duration,
 };
 
 mod broker;
@@ -10,6 +11,7 @@ mod topic;
 
 pub use broker::Broker;
 pub use partition::Partition;
+use shared_structures::Status;
 
 use crate::{broadcast::Broadcast, config::Config};
 
@@ -41,7 +43,7 @@ impl DistributionManager {
         let broker_id = broker.id.clone();
         brokers_lock.push(broker);
         // Need to replicate the pending partitions if there is any
-        replicate_pending_partitions(&mut self.pending_replication_partitions, &mut brokers_lock);
+        replicate_pending_partitions(&mut self.pending_replication_partitions, &mut brokers_lock)?;
         Ok(broker_id)
     }
 
@@ -107,9 +109,7 @@ impl DistributionManager {
                 &mut brokers_lock,
                 *replica_factor as usize,
                 &partition,
-            );
-
-            Broadcast::create_partition(&mut brokers_lock, &partition.id)?;
+            )?;
 
             // TODO: Should begin leadership race among replications of the Partition.
         } else {
@@ -130,19 +130,62 @@ impl DistributionManager {
         let brokers = Arc::clone(&self.brokers);
         let broker_id = broker.id.clone();
 
+        let throttle = self
+            .config
+            .get_number("throttle")
+            .ok_or("Throttle is missing form the configuration file.")?
+            .clone();
+
         std::thread::spawn(move || {
             let mut reader = BufReader::new(watch_stream);
             let mut buf = String::with_capacity(1024);
 
             loop {
-                let size = reader.read_line(&mut buf).unwrap();
+                let size = match reader.read_line(&mut buf) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        println!("Error in broker read thread: {}", e);
+                        println!("Retrying to read with throttling at {}ms", throttle);
+                        std::thread::sleep(Duration::from_millis(throttle as u64));
+                        continue;
+                    }
+                };
+
                 if size == 0 {
                     println!("Broker {} has disconnected.", broker_id);
+
                     let mut brokers_lock = brokers.lock().unwrap();
-                    if let Some(index) = brokers_lock.iter().position(|b| b.id == broker_id) {
-                        brokers_lock.remove(index);
+
+                    if let Some(broker) = brokers_lock.iter_mut().find(|b| b.id == broker_id) {
+                        broker
+                            .partitions
+                            .iter_mut()
+                            .for_each(|p| p.status = Status::Down);
+
+                        let offline_partitions: Vec<_> = broker
+                            .partitions
+                            .iter()
+                            .map(|p| (&p.id, &p.replica_id, p.replica_count))
+                            .collect();
+
+                        println!("Broker {} gone offline.", broker.id);
+                        println!("Partion ID\t\t\t\tReplica ID\t\t\t\tReplica Count");
+                        for offline_partition in offline_partitions.iter() {
+                            println!(
+                                "{}\t{}\t{}",
+                                offline_partition.0, offline_partition.1, offline_partition.2
+                            );
+                        }
+                        break;
+                    } else {
+                        return;
                     }
-                    break;
+
+                    //   if let Some(index) = brokers_lock.iter().position(|b| b.id == broker_id) {
+                    //       // TODO: Should I really remove the broker if it was disconnect? What if it crashed but all the data is still there?
+                    //
+                    //       brokers_lock.remove(index);
+                    //   }
                 }
             }
         });
@@ -153,7 +196,7 @@ impl DistributionManager {
 fn replicate_pending_partitions(
     pending_replication_partitions: &[(usize, Partition)],
     brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
-) {
+) -> Result<(), String> {
     for (replications_needed, partition) in pending_replication_partitions.iter() {
         let last_replica_count = partition.replica_count;
 
@@ -161,10 +204,13 @@ fn replicate_pending_partitions(
             let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition);
             if let Some(broker) = least_distributed_broker {
                 let replica = Partition::replicate(partition, last_replica_count + replica_count);
+                Broadcast::create_partition(broker, &replica.id)?;
                 broker.partitions.push(replica);
             }
         }
     }
+
+    Ok(())
 }
 
 fn replicate_partition(
@@ -172,7 +218,7 @@ fn replicate_partition(
     brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
     replica_factor: usize,
     partition: &Partition,
-) {
+) -> Result<(), String> {
     let total_available_brokers = brokers_lock.len();
     let future_replications_required = replica_factor as i32 - total_available_brokers as i32;
 
@@ -186,9 +232,12 @@ fn replicate_partition(
         let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition);
         if let Some(broker) = least_distributed_broker {
             let replica = Partition::replicate(partition, replica_count);
+            Broadcast::create_partition(broker, &partition.id)?;
             broker.partitions.push(replica);
         }
     }
+
+    Ok(())
 }
 
 fn get_clean_broker_from_partition_index<'a>(
