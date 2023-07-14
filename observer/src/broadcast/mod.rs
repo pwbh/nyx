@@ -1,18 +1,16 @@
 use std::{io::Write, net::TcpStream, sync::MutexGuard};
 
-use shared_structures::Status;
+use shared_structures::{Message, Status};
 
-use crate::distribution_manager::{Broker, Partition};
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub enum Message {
-    CreatePartition(Partition),
-}
+use crate::distribution_manager::Broker;
 
 pub struct Broadcast;
 
 impl Broadcast {
-    pub fn broadcast(streams: &mut [TcpStream], message: Message) -> Result<(), String> {
+    pub fn broadcast<T: serde::Serialize>(
+        streams: &mut [TcpStream],
+        message: Message<T>,
+    ) -> Result<(), String> {
         for stream in streams {
             let payload = serde_json::to_string(&message)
                 .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
@@ -26,7 +24,10 @@ impl Broadcast {
         Ok(())
     }
 
-    pub fn broadcast_to(stream: &mut TcpStream, message: Message) -> Result<(), String> {
+    pub fn broadcast_to<T: serde::Serialize>(
+        stream: &mut TcpStream,
+        message: Message<T>,
+    ) -> Result<(), String> {
         let payload = serde_json::to_string(&message)
             .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
         println!("Payload {:?}", payload);

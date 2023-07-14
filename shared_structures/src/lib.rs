@@ -10,3 +10,8 @@ pub enum Role {
     Follower,
     Leader,
 }
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub enum Message<T: serde::Serialize> {
+    CreatePartition(T),
+}
