@@ -168,7 +168,6 @@ impl DistributionManager {
                             .map(|p| (&p.id, &p.replica_id, p.replica_count))
                             .collect();
 
-                        println!("Broker {} gone offline.", broker.id);
                         println!("Partion ID\t\t\t\tReplica ID\t\t\t\tReplica Count");
                         for offline_partition in offline_partitions.iter() {
                             println!(
@@ -176,9 +175,9 @@ impl DistributionManager {
                                 offline_partition.0, offline_partition.1, offline_partition.2
                             );
                         }
-                        break;
                     } else {
-                        return;
+                        println!("Failed to find the Broker in the system, this can lead to major data loses.");
+                        println!("Please let us know about this message by creating an issue on our GitHub repository https://github.com/pwbh/nyx/issues/new");
                     }
 
                     //   if let Some(index) = brokers_lock.iter().position(|b| b.id == broker_id) {
@@ -186,6 +185,7 @@ impl DistributionManager {
                     //
                     //       brokers_lock.remove(index);
                     //   }
+                    break;
                 }
             }
         });
@@ -204,8 +204,8 @@ fn replicate_pending_partitions(
             let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition);
             if let Some(broker) = least_distributed_broker {
                 let replica = Partition::replicate(partition, last_replica_count + replica_count);
-                Broadcast::create_partition(broker, &replica.id)?;
                 broker.partitions.push(replica);
+                Broadcast::create_partition(broker, &partition.id)?;
             }
         }
     }
@@ -232,8 +232,8 @@ fn replicate_partition(
         let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition);
         if let Some(broker) = least_distributed_broker {
             let replica = Partition::replicate(partition, replica_count);
-            Broadcast::create_partition(broker, &partition.id)?;
             broker.partitions.push(replica);
+            Broadcast::create_partition(broker, &partition.id)?;
         }
     }
 
