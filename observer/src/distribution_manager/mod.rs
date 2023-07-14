@@ -99,6 +99,8 @@ impl DistributionManager {
 
             let partition = Partition::new(&topic, topic_lock.partition_count);
 
+            drop(topic_lock);
+
             // Need to add partition replicas
             replicate_partition(
                 &mut self.pending_replication_partitions,
@@ -107,7 +109,7 @@ impl DistributionManager {
                 &partition,
             );
 
-            //   Broadcast::create_partition(&mut brokers_lock, &partition.id)?;
+            Broadcast::create_partition(&mut brokers_lock, &partition.id)?;
 
             // TODO: Should begin leadership race among replications of the Partition.
         } else {
@@ -233,6 +235,8 @@ mod tests {
 
             loop {
                 let size = reader.read_line(&mut buf).unwrap();
+
+                println!("{}", buf);
 
                 if size == 0 {
                     break;
@@ -402,6 +406,16 @@ mod tests {
             + partition_replication_count_3
             + partition_replication_count_4
             + partition_replication_count_5;
+
+        let total_replicas_in_brokers: usize = distribution_manager_lock
+            .brokers
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|b| b.partitions.len())
+            .sum();
+
+        assert_eq!(total_replicas, total_replicas_in_brokers);
 
         println!("{:#?}", distribution_manager_lock.brokers);
     }
