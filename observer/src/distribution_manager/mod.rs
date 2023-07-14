@@ -107,7 +107,7 @@ impl DistributionManager {
                 &partition,
             );
 
-            Broadcast::create_partition(&mut brokers_lock, &partition.id)?;
+            //   Broadcast::create_partition(&mut brokers_lock, &partition.id)?;
 
             // TODO: Should begin leadership race among replications of the Partition.
         } else {
@@ -161,37 +161,6 @@ fn replicate_pending_partitions(
     }
 }
 
-/*
-TODO: When rebalancing, take into account the partition replica factor.
-At the moment, rebalancing is not working in the intended way yet. Below is a cluster rebalancing with partition replica factor of 2.
-replica factor should be configured in the config file.
-
-   Cluster:
-  Broker-1
-  └─ Partition 0 of my_topic1 (Replica 1)
-  └─ Partition 1 of my_topic1 (Replica 2)
-  └─ Partition 0 of my_topic2 (Replica 1)
-  └─ Partition 1 of my_topic2 (Replica 2)
-  └─ Partition 0 of my_topic3 (Replica 1)
-  └─ Partition 1 of my_topic3 (Replica 2)
-
-  Broker-2
-  └─ Partition 2 of my_topic1 (Replica 1)
-  └─ Partition 3 of my_topic1 (Replica 2)
-  └─ Partition 2 of my_topic2 (Replica 1)
-  └─ Partition 3 of my_topic2 (Replica 2)
-  └─ Partition 2 of my_topic3 (Replica 1)
-  └─ Partition 3 of my_topic3 (Replica 2)
-
-  Broker-3
-  └─ Partition 0 of my_topic1 (Replica 2)
-  └─ Partition 1 of my_topic1 (Replica 1)
-  └─ Partition 0 of my_topic2 (Replica 2)
-  └─ Partition 1 of my_topic2 (Replica 1)
-  └─ Partition 0 of my_topic3 (Replica 2)
-  └─ Partition 1 of my_topic3 (Replica 1)
-
-*/
 fn replicate_partition(
     pending_replication_partitions: &mut Vec<(usize, Partition)>,
     brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
@@ -207,11 +176,6 @@ fn replicate_partition(
         pending_replication_partitions.push((future_replications_required as usize, replica));
     }
 
-    //  if total_available_brokers == 1 {
-    //      let least_distributed_broker = get_least_distributed_broker(brokers_lock);
-    //      let replica = Partition::replicate(partition, 1);
-    //      least_distributed_broker.partitions.push(replica);
-    //  } else {
     for replica_count in 1..=replica_factor {
         let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition);
         if let Some(broker) = least_distributed_broker {
@@ -219,7 +183,6 @@ fn replicate_partition(
             broker.partitions.push(replica);
         }
     }
-    //  }
 }
 
 fn get_clean_broker_from_partition_index<'a>(
@@ -433,6 +396,12 @@ mod tests {
             .unwrap();
 
         assert_eq!(partition_replication_count_5, replica_factor as usize);
+
+        let total_replicas = partition_replication_count_1
+            + partition_replication_count_2
+            + partition_replication_count_3
+            + partition_replication_count_4
+            + partition_replication_count_5;
 
         println!("{:#?}", distribution_manager_lock.brokers);
     }
