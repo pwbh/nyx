@@ -113,10 +113,8 @@ fn handle_create_command(
 
     match arguments_iter.next() {
         Some(entity) => match entity.trim() {
-            "TOPIC" => handle_create_topic(distribution_manager, &arguments_iter.next().unwrap()),
-            "PARTITION" => {
-                handle_create_partition(distribution_manager, &arguments_iter.next().unwrap())
-            }
+            "TOPIC" => handle_create_topic(distribution_manager, &mut arguments_iter),
+            "PARTITION" => handle_create_partition(distribution_manager, &mut arguments_iter),
             _ => Err("Unrecognized entity has been provided.".to_string()),
         },
         None => Err("Entity type was not provided.".to_string()),
@@ -133,8 +131,11 @@ fn handle_create_broker(
 
 fn handle_create_topic(
     distribution_manager: &mut Arc<Mutex<DistributionManager>>,
-    topic_name: &str,
+    arguments_iter: &mut std::slice::Iter<'_, String>,
 ) -> Result<(), String> {
+    let topic_name = arguments_iter
+        .next()
+        .ok_or("Please provide topic name for which you want to create the topic.".to_string())?;
     let mut distribution_manager_lock: std::sync::MutexGuard<'_, DistributionManager> =
         distribution_manager.lock().unwrap();
     distribution_manager_lock.create_topic(topic_name)?;
@@ -143,8 +144,11 @@ fn handle_create_topic(
 
 fn handle_create_partition(
     distribution_manager: &mut Arc<Mutex<DistributionManager>>,
-    topic_name: &str,
+    arguments_iter: &mut std::slice::Iter<'_, String>,
 ) -> Result<(), String> {
+    let topic_name = arguments_iter.next().ok_or(
+        "Please provide a valid topic name for which you want to create a partition.".to_string(),
+    )?;
     let mut distribution_manager_lock = distribution_manager.lock().unwrap();
     distribution_manager_lock.create_partition(topic_name)?;
     Ok(())

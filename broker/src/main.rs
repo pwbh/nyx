@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             exit = true;
         }
 
-        println!("{}", buf);
+        println!("Message received: {}", buf);
 
         buf.clear();
     }
