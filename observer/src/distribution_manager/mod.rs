@@ -15,7 +15,7 @@ use shared_structures::Status;
 
 use crate::{broadcast::Broadcast, config::Config};
 
-use self::topic::Topic;
+use self::{broker::ID_FIELD_CHAR_COUNT, topic::Topic};
 
 #[derive(Debug)]
 pub struct DistributionManager {
@@ -35,16 +35,28 @@ impl DistributionManager {
         }))
     }
 
-    // Will return the broker id that has been added to the Observer
+    // Will return the broker id that has been added or restored to the Observer
+    // TODO: Should check whether a broker that is being added already exists in the system + if it's Status is `Down`
+    // meaning that this broker has disconnected in one of many possible ways, including user interference, unexpected system crush
+    // or any other reason. Observer should try and sync with the brokers via the brokers provided id.
     pub fn create_broker(&mut self, stream: TcpStream) -> Result<String, String> {
+        let metadata = self.get_broker_metadata(stream)?;
         let mut brokers_lock = self.brokers.lock().unwrap();
-        let broker = Broker::from(stream)?;
-        self.spawn_broker_reader(&broker)?;
-        let broker_id = broker.id.clone();
-        brokers_lock.push(broker);
-        // Need to replicate the pending partitions if there is any
-        replicate_pending_partitions(&mut self.pending_replication_partitions, &mut brokers_lock)?;
-        Ok(broker_id)
+        if let Some(disconnected_broker) = brokers_lock.iter_mut().find(|b| b.id == metadata.0) {
+            self.restore_disconnected_broker(disconnected_broker);
+            Ok(metadata.0.clone())
+        } else {
+            let broker = Broker::from(metadata.0, metadata.1, metadata.2)?;
+            self.spawn_broker_reader(&broker)?;
+            let broker_id = broker.id.clone();
+            brokers_lock.push(broker);
+            // Need to replicate the pending partitions if there is any
+            replicate_pending_partitions(
+                &mut self.pending_replication_partitions,
+                &mut brokers_lock,
+            )?;
+            Ok(broker_id)
+        }
     }
 
     // Will return the name of created topic on success
@@ -119,6 +131,27 @@ impl DistributionManager {
         Ok(*replica_factor as usize)
     }
 
+    fn get_broker_metadata(
+        &self,
+        stream: TcpStream,
+    ) -> Result<(String, TcpStream, BufReader<TcpStream>), String> {
+        let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
+        let mut reader = BufReader::new(read_stream);
+
+        let mut id: String = String::with_capacity(ID_FIELD_CHAR_COUNT);
+        reader.read_line(&mut id).map_err(|e| e.to_string())?;
+
+        let id = id.trim();
+
+        Ok((id.to_string(), stream, reader))
+    }
+
+    fn restore_disconnected_broker(&self, broker: &mut Broker) {
+        for partition in broker.partitions.iter_mut() {
+            partition.status = Status::Up
+        }
+    }
+
     // TODO: What should the distribution_manager do when there is only one broker, and it has disconnected due to a crash?
     // Distribution manager should start a failover, meaning it should find the replica that has disconnected and set all partition to PendingCreation
     // Each Partition should have a replica_id which is unique per replica to find it if such case occures.
@@ -151,6 +184,7 @@ impl DistributionManager {
                     }
                 };
 
+                // TODO: Think what should happen to the metadata of the broker that has been disconnected.
                 if size == 0 {
                     println!("Broker {} has disconnected.", broker_id);
 
@@ -179,12 +213,6 @@ impl DistributionManager {
                         println!("Failed to find the Broker in the system, this can lead to major data loses.");
                         println!("Please let us know about this message by creating an issue on our GitHub repository https://github.com/pwbh/nyx/issues/new");
                     }
-
-                    //   if let Some(index) = brokers_lock.iter().position(|b| b.id == broker_id) {
-                    //       // TODO: Should I really remove the broker if it was disconnect? What if it crashed but all the data is still there?
-                    //
-                    //       brokers_lock.remove(index);
-                    //   }
                     break;
                 }
             }
@@ -193,22 +221,47 @@ impl DistributionManager {
     }
 }
 
+// TODO: Think what to do about the pending replications, should it replicate to all the available brokers?
+// or should each partition be replicated on different brokers meaning partitions will be replicated only after new brokers added.
 fn replicate_pending_partitions(
-    pending_replication_partitions: &[(usize, Partition)],
+    pending_replication_partitions: &mut Vec<(usize, Partition)>,
     brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
 ) -> Result<(), String> {
-    for (replications_needed, partition) in pending_replication_partitions.iter() {
-        let last_replica_count = partition.replica_count;
+    println!("{:?}", pending_replication_partitions);
+    loop {
+        if let Some((mut replications_needed, partition)) = pending_replication_partitions.pop() {
+            let last_replica_count = partition.replica_count;
 
-        for replica_count in 1..=*replications_needed {
-            let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition);
-            if let Some(broker) = least_distributed_broker {
-                let replica = Partition::replicate(partition, last_replica_count + replica_count);
-                broker.partitions.push(replica);
-                Broadcast::create_partition(broker, &partition.id)?;
+            for replica_count in 1..=replications_needed {
+                let least_distributed_broker =
+                    get_least_distributed_broker(brokers_lock, &partition)?;
+                let mut replica =
+                    Partition::replicate(&partition, last_replica_count + replica_count);
+                Broadcast::replicate_partition(least_distributed_broker, &mut replica)?;
+                least_distributed_broker.partitions.push(replica);
+
+                replications_needed -= 1;
             }
+
+            if replications_needed != 0 {
+                pending_replication_partitions.push((replications_needed, partition));
+                break;
+            }
+        } else {
+            break;
         }
     }
+
+    //  for (replications_needed, partition) in pending_replication_partitions.iter() {
+    //      let last_replica_count = partition.replica_count;
+    //
+    //      for replica_count in 1..=*replications_needed {
+    //          let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition)?;
+    //          let replica = Partition::replicate(partition, last_replica_count + replica_count);
+    //          least_distributed_broker.partitions.push(replica);
+    //          Broadcast::create_partition(least_distributed_broker, &partition.id)?;
+    //      }
+    //  }
 
     Ok(())
 }
@@ -219,51 +272,54 @@ fn replicate_partition(
     replica_factor: usize,
     partition: &Partition,
 ) -> Result<(), String> {
+    // Here we create a variable containing the total available brokers in the cluster to check whether it is less
+    // then replication factor, if so we certain either way to we will replicate to all partitions
     let total_available_brokers = brokers_lock.len();
-    let future_replications_required = replica_factor as i32 - total_available_brokers as i32;
+    let mut future_replications_required = replica_factor as i32 - total_available_brokers as i32;
 
     if future_replications_required > 0 {
         // total_available_brokers - is the next replication that should be added by the count.
         let replica = Partition::replicate(partition, total_available_brokers);
         pending_replication_partitions.push((future_replications_required as usize, replica));
+    } else {
+        future_replications_required = 0;
     }
 
-    for replica_count in 1..=replica_factor {
-        let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition);
-        if let Some(broker) = least_distributed_broker {
-            let replica = Partition::replicate(partition, replica_count);
-            broker.partitions.push(replica);
-            Broadcast::create_partition(broker, &partition.id)?;
-        }
+    let current_max_replications = replica_factor - future_replications_required as usize;
+
+    for replica_count in 1..=current_max_replications {
+        let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition)?;
+        let mut replica = Partition::replicate(partition, replica_count);
+        Broadcast::replicate_partition(least_distributed_broker, &mut replica)?;
+        least_distributed_broker.partitions.push(replica);
     }
 
     Ok(())
 }
 
-fn get_clean_broker_from_partition_index<'a>(
-    brokers_lock: &'a mut MutexGuard<'_, Vec<Broker>>,
-    partition: &'a Partition,
-) -> Option<usize> {
-    for (i, b) in brokers_lock.iter().enumerate() {
-        if b.partitions.iter().all(|p| p.id != partition.id) {
-            return Some(i);
-        }
-    }
-
-    return None;
-}
-
 fn get_least_distributed_broker<'a>(
     brokers_lock: &'a mut MutexGuard<'_, Vec<Broker>>,
     partition: &'a Partition,
-) -> Option<&'a mut Broker> {
-    if let Some(clean_from_partition_broker_index) =
-        get_clean_broker_from_partition_index(brokers_lock, partition)
-    {
-        return Some(&mut brokers_lock[clean_from_partition_broker_index]);
+) -> Result<&'a mut Broker, String> {
+    let mut brokers_lock_iter = brokers_lock.iter().enumerate();
+
+    let first_element = brokers_lock_iter
+        .next()
+        .ok_or("At least 1 registerd broker is expected in the system.")?;
+
+    let mut least_distribured_broker_index: usize = first_element.0;
+    let mut least_distributed_broker: usize = first_element.1.partitions.len();
+
+    for (i, b) in brokers_lock_iter {
+        if b.partitions.iter().all(|p| p.id != partition.id)
+            && least_distributed_broker > b.partitions.len()
+        {
+            least_distributed_broker = b.partitions.len();
+            least_distribured_broker_index = i;
+        }
     }
 
-    return None;
+    return Ok(&mut brokers_lock[least_distribured_broker_index]);
 }
 
 #[cfg(test)]
@@ -400,6 +456,7 @@ mod tests {
         );
     }
 
+    // TODO: Rewrite test to REALLY check the balancing of partitions
     #[test]
     fn craete_partition_distributes_replicas() {
         let config = config_mock();

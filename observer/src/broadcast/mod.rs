@@ -2,7 +2,7 @@ use std::{io::Write, net::TcpStream};
 
 use shared_structures::{Message, Status};
 
-use crate::distribution_manager::Broker;
+use crate::distribution_manager::{Broker, Partition};
 
 pub struct Broadcast;
 
@@ -63,6 +63,20 @@ impl Broadcast {
                 p.status = Status::Up;
             }
         }
+
+        Ok(())
+    }
+
+    // This will broadcast to every broker the necessary command for the broker to execute the necessary command
+    // here its Message::CreatePartition, with the relevant data
+    pub fn replicate_partition(broker: &mut Broker, replica: &mut Partition) -> Result<(), String> {
+        Self::to(
+            &mut broker.stream,
+            Message::CreatePartition(replica.clone()),
+        )?;
+        // After successful creation of the partition on the broker,
+        // we can set its status on the observer to Active.
+        replica.status = Status::Up;
 
         Ok(())
     }

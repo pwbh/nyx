@@ -6,7 +6,7 @@ use std::{
 
 use super::partition::Partition;
 
-const ID_FIELD_CHAR_COUNT: usize = 36;
+pub const ID_FIELD_CHAR_COUNT: usize = 36;
 
 #[derive(Debug)]
 pub struct Broker {
@@ -17,15 +17,13 @@ pub struct Broker {
 }
 
 impl Broker {
-    pub fn from(stream: TcpStream) -> Result<Self, String> {
-        let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
-        let mut reader = BufReader::new(read_stream);
-
-        let mut id: String = String::with_capacity(ID_FIELD_CHAR_COUNT);
-        reader.read_line(&mut id).map_err(|e| e.to_string())?;
-
+    pub fn from(
+        id: String,
+        stream: TcpStream,
+        reader: BufReader<TcpStream>,
+    ) -> Result<Self, String> {
         Ok(Self {
-            id: id.trim().to_string(),
+            id,
             partitions: vec![],
             stream,
             reader,
