@@ -37,3 +37,29 @@ impl Partition {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use crate::topic;
+
+    use super::*;
+
+    #[test]
+    fn creates_partition_on_broker() {
+        let topic =
+            topic::Topic::from("mock_topic_id".to_string(), "notifications".to_string()).unwrap();
+
+        let partition = Partition::from(
+            "mocked_partition_id".to_string(),
+            Status::Up,
+            topic,
+            Role::Follower,
+            1,
+            1,
+        )
+        .unwrap();
+
+        assert_eq!(partition.id, "mocked_partition_id".to_string())
+    }
+}

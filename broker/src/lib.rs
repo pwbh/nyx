@@ -91,3 +91,40 @@ fn get_metadata_directory() -> Result<PathBuf, String> {
         Err("Couldn't get the systems home directory. Please setup a HOME env variable and pass your system's home directory there.".to_string())
     }
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    fn cleanup_nyx_storage() -> Result<(), String> {
+        let nyx_dir = get_metadata_directory()?;
+        fs::remove_dir_all(nyx_dir).map_err(|e| e.to_string())
+    }
+
+    #[test]
+    fn get_metadata_directory_returns_dir_as_expected() {
+        let dir = get_metadata_directory().unwrap();
+        assert!(dir.to_str().unwrap().contains("nyx"));
+    }
+
+    #[test]
+    fn get_metadata_filepath_returns_filepath_as_expected() {
+        let filepath = get_metadata_filepath().unwrap();
+        assert!(filepath.to_str().unwrap().contains("nyx/metadata.json"));
+    }
+
+    #[test]
+    fn save_metadata_file_saves_file_to_designated_location() {
+        save_metadata_file(&Metadata {
+            id: "broker_metadata_id".to_string(),
+            partitions: vec![],
+        })
+        .unwrap();
+        let filepath = get_metadata_filepath().unwrap();
+        let file = fs::File::open(filepath);
+        assert!(file.is_ok());
+
+        cleanup_nyx_storage().unwrap();
+    }
+}
