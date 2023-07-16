@@ -24,27 +24,25 @@ impl Broker {
     // that will contain the information for the broker to use in a situtation where it crushed, or was
     // disconnected and is now reconnecting, should reconnect with the old information, including partitions etc.
     pub fn new(stream: TcpStream) -> Result<Self, String> {
-        match try_get_metadata() {
-            Ok(metadata) => Ok(Self { stream, metadata }),
+        let broker = match try_get_metadata() {
+            Ok(metadata) => Self { stream, metadata },
             Err(e) => {
-                println!("Error: {}", e);
                 let id = Uuid::new_v4().to_string();
 
-                let broker = Self {
-                    metadata: Metadata {
-                        id,
-                        partitions: vec![],
-                    },
-                    stream,
+                let metadata = Metadata {
+                    id,
+                    partitions: vec![],
                 };
 
-                let dir = get_metadata_directory()?;
+                let broker = Self { metadata, stream };
 
-                fs::create_dir(dir).map_err(|e| e.to_string())?;
+                save_metadata_file(&broker.metadata)?;
 
-                Ok(broker)
+                broker
             }
-        }
+        };
+
+        Ok(broker)
     }
 
     pub fn handshake(&mut self) -> std::io::Result<usize> {
@@ -54,9 +52,29 @@ impl Broker {
 }
 
 fn try_get_metadata() -> Result<Metadata, String> {
-    let dir = get_metadata_directory()?;
+    let filepath = get_metadata_filepath()?;
+    let content = fs::read_to_string(filepath).map_err(|e| e.to_string())?;
+    serde_json::from_str::<Metadata>(&content).map_err(|e| e.to_string())
+}
 
-    unimplemented!()
+fn save_metadata_file(metadata: &Metadata) -> Result<(), String> {
+    let nyx_dir = get_metadata_directory()?;
+    let filepath = get_metadata_filepath()?;
+    fs::create_dir_all(&nyx_dir).map_err(|e| e.to_string())?;
+    let mut file = std::fs::File::create(&filepath).map_err(|e| e.to_string())?;
+    let payload = serde_json::to_string(metadata).map_err(|e| e.to_string())?;
+    file.write(payload.as_bytes()).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn get_metadata_filepath() -> Result<PathBuf, String> {
+    let dir = get_metadata_directory()?;
+    let dir_str = dir
+        .to_str()
+        .ok_or("Not valid UTF-8 path is passed.".to_string())?;
+
+    let filepath = format!("{}/metadata.json", dir_str);
+    Ok(filepath.into())
 }
 
 fn get_metadata_directory() -> Result<PathBuf, String> {
@@ -67,7 +85,7 @@ fn get_metadata_directory() -> Result<PathBuf, String> {
     }
     // Windows based machines
     else if let Ok(user_profile) = std::env::var("USERPROFILE") {
-        let config_dir = format!(r"{}\AppData\Roaming\nyx", user_profile);
+        let config_dir = format!(r"{}/AppData/Roaming/nyx", user_profile);
         Ok(config_dir.into())
     } else {
         Err("Couldn't get the systems home directory. Please setup a HOME env variable and pass your system's home directory there.".to_string())

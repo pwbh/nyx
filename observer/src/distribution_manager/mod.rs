@@ -43,10 +43,10 @@ impl DistributionManager {
         let metadata = self.get_broker_metadata(stream)?;
         let mut brokers_lock = self.brokers.lock().unwrap();
         if let Some(disconnected_broker) = brokers_lock.iter_mut().find(|b| b.id == metadata.0) {
-            self.restore_disconnected_broker(disconnected_broker);
-            Ok(metadata.0.clone())
+            self.restore_disconnected_broker(disconnected_broker, metadata)?;
+            Ok(disconnected_broker.id.clone())
         } else {
-            let broker = Broker::from(metadata.0, metadata.1, metadata.2)?;
+            let broker = Broker::from(metadata)?;
             self.spawn_broker_reader(&broker)?;
             let broker_id = broker.id.clone();
             brokers_lock.push(broker);
@@ -146,10 +146,19 @@ impl DistributionManager {
         Ok((id.to_string(), stream, reader))
     }
 
-    fn restore_disconnected_broker(&self, broker: &mut Broker) {
+    fn restore_disconnected_broker(
+        &self,
+        broker: &mut Broker,
+        metadata: (String, TcpStream, BufReader<TcpStream>),
+    ) -> Result<(), String> {
+        broker.stream = metadata.1;
+        broker.reader = metadata.2;
+
         for partition in broker.partitions.iter_mut() {
             partition.status = Status::Up
         }
+
+        self.spawn_broker_reader(broker)
     }
 
     // TODO: What should the distribution_manager do when there is only one broker, and it has disconnected due to a crash?

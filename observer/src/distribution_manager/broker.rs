@@ -13,20 +13,16 @@ pub struct Broker {
     pub id: String,
     pub stream: TcpStream,
     pub partitions: Vec<Partition>,
-    reader: BufReader<TcpStream>,
+    pub reader: BufReader<TcpStream>,
 }
 
 impl Broker {
-    pub fn from(
-        id: String,
-        stream: TcpStream,
-        reader: BufReader<TcpStream>,
-    ) -> Result<Self, String> {
+    pub fn from(metadata: (String, TcpStream, BufReader<TcpStream>)) -> Result<Self, String> {
         Ok(Self {
-            id,
+            id: metadata.0,
             partitions: vec![],
-            stream,
-            reader,
+            stream: metadata.1,
+            reader: metadata.2,
         })
     }
 }
