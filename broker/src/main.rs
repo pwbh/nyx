@@ -38,10 +38,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let stream: TcpStream = tcp_stream.ok_or("Stream is wrong")?;
 
-    let mut broker = Broker::new(stream);
-    broker.send_info()?;
+    let mut broker = Broker::new(stream)?;
 
-    let mut reader = BufReader::new(&broker.observer_stream);
+    broker.handshake()?;
+
+    let mut reader = BufReader::new(&broker.stream);
 
     let mut buf = String::with_capacity(1024);
 

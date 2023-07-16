@@ -10,3 +10,4 @@ description = "core component of the message queue"
 shared_structures = { path = "../shared_structures" }
 
 uuid.workspace = true
+serde.workspace = true

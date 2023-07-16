@@ -6,7 +6,7 @@ use crate::topic::Topic;
 
 mod record;
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Partition {
     pub id: String,
     pub status: Status,

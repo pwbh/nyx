@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum Value {
     Str(String),
     Integer(i32),
@@ -11,7 +11,7 @@ pub enum Value {
 
 pub type Payload = HashMap<String, Value>;
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Record {
     id: String,
     payload: Payload,
