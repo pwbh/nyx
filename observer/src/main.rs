@@ -29,7 +29,7 @@ fn main() -> Result<(), String> {
         Role::Follower
     };
 
-    let mut observer = Observer::new(&config_path, role)?;
+    let mut observer = Observer::new(config_path, role)?;
 
     // Open a TCP stream for brokers to connect to
 
@@ -94,7 +94,7 @@ fn handle_list_command(
     command: &observer::command_processor::Command,
 ) -> Result<(), String> {
     let distribution_manager_lock = distribution_manager.lock().unwrap();
-    let level = command.arguments.iter().next().unwrap();
+    let level = command.arguments.first().unwrap();
 
     if level == "ALL" {
         println!("{:#?}", distribution_manager_lock.brokers);

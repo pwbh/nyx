@@ -111,7 +111,7 @@ impl DistributionManager {
             // We've got 1 partition, and N replications for each partition (where N brokers count)
             topic_lock.partition_count += 1;
 
-            let partition = Partition::new(&topic, topic_lock.partition_count);
+            let partition = Partition::new(topic, topic_lock.partition_count);
 
             drop(topic_lock);
 
@@ -172,11 +172,10 @@ impl DistributionManager {
         let brokers = Arc::clone(&self.brokers);
         let broker_id = broker.id.clone();
 
-        let throttle = self
+        let throttle = *self
             .config
             .get_number("throttle")
-            .ok_or("Throttle is missing form the configuration file.")?
-            .clone();
+            .ok_or("Throttle is missing form the configuration file.")?;
 
         std::thread::spawn(move || {
             let mut reader = BufReader::new(watch_stream);
@@ -328,7 +327,7 @@ fn get_least_distributed_broker<'a>(
         }
     }
 
-    return Ok(&mut brokers_lock[least_distribured_broker_index]);
+    Ok(&mut brokers_lock[least_distribured_broker_index])
 }
 
 #[cfg(test)]
@@ -342,8 +341,8 @@ mod tests {
     }
 
     fn mock_connecting_broker(addr: &str) -> TcpStream {
-        let mut mock_stream = TcpStream::connect(&addr).unwrap();
-        let payload = format!("{}\n", uuid::Uuid::new_v4().to_string());
+        let mut mock_stream = TcpStream::connect(addr).unwrap();
+        let payload = format!("{}\n", uuid::Uuid::new_v4());
         mock_stream.write(payload.as_bytes()).unwrap();
         let read_stream = mock_stream.try_clone().unwrap();
 
@@ -362,7 +361,7 @@ mod tests {
             }
         });
 
-        return mock_stream;
+        mock_stream
     }
 
     fn setup_distribution_for_tests(config: Config, port: &str) -> Arc<Mutex<DistributionManager>> {
@@ -386,7 +385,7 @@ mod tests {
 
         drop(distribution_manager_lock);
 
-        return distribution_manager;
+        distribution_manager
     }
 
     #[test]
@@ -470,7 +469,7 @@ mod tests {
     fn craete_partition_distributes_replicas() {
         let config = config_mock();
 
-        let replica_factor = config.get_number("replica_factor").unwrap().clone();
+        let replica_factor = *config.get_number("replica_factor").unwrap();
 
         let distribution_manager = setup_distribution_for_tests(config, "5002");
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();

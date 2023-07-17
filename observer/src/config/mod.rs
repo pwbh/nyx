@@ -22,11 +22,11 @@ impl Config {
         };
 
         for line in content.lines() {
-            if line.chars().next().unwrap() == '#' {
+            if line.starts_with('#') {
                 continue;
             }
 
-            let split: Vec<&str> = line.split_terminator("=").collect();
+            let split: Vec<&str> = line.split_terminator('=').collect();
 
             if split.len() != 2 {
                 return Err("property format is incorrect, should be key=value".to_string());
@@ -34,7 +34,7 @@ impl Config {
 
             let key = split[0].to_string();
             let value = if let Ok(f) = split[1].parse::<f32>() {
-                if split[1].contains(".") {
+                if split[1].contains('.') {
                     Value::Float(f)
                 } else {
                     Value::Number(split[1].parse::<i32>().unwrap())
@@ -48,7 +48,7 @@ impl Config {
             inner.entry(key).or_insert(value);
         }
 
-        return Ok(Self { inner });
+        Ok(Self { inner })
     }
 
     pub fn get(&self, k: &str) -> Option<&Value> {
