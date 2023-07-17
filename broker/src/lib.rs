@@ -78,19 +78,25 @@ fn get_metadata_filepath(custom_dir: Option<&PathBuf>) -> Result<PathBuf, String
 }
 
 fn get_metadata_directory(custom_dir: Option<&PathBuf>) -> Result<PathBuf, String> {
-    if let Some(custom_dir) = custom_dir {
-        return Ok(custom_dir.clone());
-    }
+    let final_path = if let Some(custom_dir) = custom_dir {
+        custom_dir
+            .clone()
+            .to_str()
+            .ok_or("Invalid format provided for the directory")?
+            .to_string()
+    } else {
+        "nyx".to_string()
+    };
 
     let mut final_dir: Option<PathBuf> = None;
     // Unix-based machines
     if let Ok(home_dir) = std::env::var("HOME") {
-        let config_dir = format!("{}/.config/nyx", home_dir);
+        let config_dir = format!("{}/.config/{}", home_dir, final_path);
         final_dir = Some(config_dir.into());
     }
     // Windows based machines
     else if let Ok(user_profile) = std::env::var("USERPROFILE") {
-        let config_dir = format!(r"{}/AppData/Roaming/nyx", user_profile);
+        let config_dir = format!(r"{}/AppData/Roaming/{}", user_profile, final_path);
         final_dir = Some(config_dir.into());
     }
 
