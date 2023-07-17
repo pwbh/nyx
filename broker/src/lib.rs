@@ -24,7 +24,7 @@ impl Broker {
     // that will contain the information for the broker to use in a situtation where it crushed, or was
     // disconnected and is now reconnecting, should reconnect with the old information, including partitions etc.
     pub fn new(stream: TcpStream) -> Result<Self, String> {
-        let broker = match try_get_metadata() {
+        let broker = match try_get_metadata(None) {
             Ok(metadata) => Self { stream, metadata },
             Err(_e) => {
                 let id = Uuid::new_v4().to_string();
@@ -51,8 +51,8 @@ impl Broker {
     }
 }
 
-fn try_get_metadata() -> Result<Metadata, String> {
-    let filepath = get_metadata_filepath(None)?;
+fn try_get_metadata(custom_dir: Option<&PathBuf>) -> Result<Metadata, String> {
+    let filepath = get_metadata_filepath(custom_dir)?;
     let content = fs::read_to_string(filepath).map_err(|e| e.to_string())?;
     serde_json::from_str::<Metadata>(&content).map_err(|e| e.to_string())
 }
@@ -68,7 +68,7 @@ fn save_metadata_file(metadata: &Metadata, custom_dir: Option<&PathBuf>) -> Resu
 }
 
 fn get_metadata_filepath(custom_dir: Option<&PathBuf>) -> Result<PathBuf, String> {
-    let dir = get_metadata_directory(None)?;
+    let dir = get_metadata_directory(custom_dir)?;
     let dir_str = dir
         .to_str()
         .ok_or("Not valid UTF-8 path is passed.".to_string())?;
@@ -148,10 +148,10 @@ mod tests {
 
     #[test]
     fn tries_to_get_metadata_succeeds() {
-        let path: PathBuf = "tries_to_get_metadata_succeeds".into();
-        setup_nyx_dir_with_metadata(&path);
-        let result = try_get_metadata();
+        let custom_dir: PathBuf = "tries_to_get_metadata_succeeds".into();
+        setup_nyx_dir_with_metadata(&custom_dir);
+        let result = try_get_metadata(Some(&custom_dir));
         assert!(result.is_ok());
-        cleanup_nyx_storage(&path);
+        cleanup_nyx_storage(&custom_dir);
     }
 }
