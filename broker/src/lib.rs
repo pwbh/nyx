@@ -36,7 +36,7 @@ impl Broker {
 
                 let broker = Self { metadata, stream };
 
-                save_metadata_file(&broker.metadata)?;
+                save_metadata_file(&broker.metadata, None)?;
 
                 broker
             }
@@ -52,14 +52,14 @@ impl Broker {
 }
 
 fn try_get_metadata() -> Result<Metadata, String> {
-    let filepath = get_metadata_filepath()?;
+    let filepath = get_metadata_filepath(None)?;
     let content = fs::read_to_string(filepath).map_err(|e| e.to_string())?;
     serde_json::from_str::<Metadata>(&content).map_err(|e| e.to_string())
 }
 
-fn save_metadata_file(metadata: &Metadata) -> Result<(), String> {
-    let nyx_dir = get_metadata_directory()?;
-    let filepath = get_metadata_filepath()?;
+fn save_metadata_file(metadata: &Metadata, custom_dir: Option<&PathBuf>) -> Result<(), String> {
+    let nyx_dir = get_metadata_directory(custom_dir)?;
+    let filepath = get_metadata_filepath(custom_dir)?;
     fs::create_dir_all(nyx_dir).map_err(|e| e.to_string())?;
     let mut file = std::fs::File::create(filepath).map_err(|e| e.to_string())?;
     let payload = serde_json::to_string(metadata).map_err(|e| e.to_string())?;
@@ -67,8 +67,8 @@ fn save_metadata_file(metadata: &Metadata) -> Result<(), String> {
     Ok(())
 }
 
-fn get_metadata_filepath() -> Result<PathBuf, String> {
-    let dir = get_metadata_directory()?;
+fn get_metadata_filepath(custom_dir: Option<&PathBuf>) -> Result<PathBuf, String> {
+    let dir = get_metadata_directory(None)?;
     let dir_str = dir
         .to_str()
         .ok_or("Not valid UTF-8 path is passed.".to_string())?;
@@ -77,54 +77,81 @@ fn get_metadata_filepath() -> Result<PathBuf, String> {
     Ok(filepath.into())
 }
 
-fn get_metadata_directory() -> Result<PathBuf, String> {
+fn get_metadata_directory(custom_dir: Option<&PathBuf>) -> Result<PathBuf, String> {
+    if let Some(custom_dir) = custom_dir {
+        return Ok(custom_dir.clone());
+    }
+
+    let mut final_dir: Option<PathBuf> = None;
     // Unix-based machines
     if let Ok(home_dir) = std::env::var("HOME") {
         let config_dir = format!("{}/.config/nyx", home_dir);
-        Ok(config_dir.into())
+        final_dir = Some(config_dir.into());
     }
     // Windows based machines
     else if let Ok(user_profile) = std::env::var("USERPROFILE") {
         let config_dir = format!(r"{}/AppData/Roaming/nyx", user_profile);
-        Ok(config_dir.into())
-    } else {
-        Err("Couldn't get the systems home directory. Please setup a HOME env variable and pass your system's home directory there.".to_string())
+        final_dir = Some(config_dir.into());
     }
+
+    final_dir.ok_or("Couldn't get the systems home directory. Please setup a HOME env variable and pass your system's home directory there.".to_string())
 }
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
-    fn cleanup_nyx_storage() -> Result<(), String> {
-        let nyx_dir = get_metadata_directory()?;
-        fs::remove_dir_all(nyx_dir).map_err(|e| e.to_string())
+    fn setup_nyx_dir_with_metadata(custom_dir: &PathBuf) {
+        save_metadata_file(
+            &Metadata {
+                id: "some_mocked_id".to_string(),
+                partitions: vec![],
+            },
+            Some(custom_dir),
+        )
+        .unwrap();
+    }
+
+    fn cleanup_nyx_storage(custom_dir: &PathBuf) {
+        let nyx_dir = get_metadata_directory(Some(custom_dir)).unwrap();
+        fs::remove_dir_all(nyx_dir).unwrap();
     }
 
     #[test]
     fn get_metadata_directory_returns_dir_as_expected() {
-        let dir = get_metadata_directory().unwrap();
+        let dir = get_metadata_directory(None).unwrap();
         assert!(dir.to_str().unwrap().contains("nyx"));
     }
 
     #[test]
     fn get_metadata_filepath_returns_filepath_as_expected() {
-        let filepath = get_metadata_filepath().unwrap();
+        let filepath = get_metadata_filepath(None).unwrap();
         assert!(filepath.to_str().unwrap().contains("nyx/metadata.json"));
     }
 
     #[test]
     fn save_metadata_file_saves_file_to_designated_location() {
-        save_metadata_file(&Metadata {
-            id: "broker_metadata_id".to_string(),
-            partitions: vec![],
-        })
+        let custom_dir: PathBuf = "save_metadata_file_saves_file_to_designated_location".into();
+        save_metadata_file(
+            &Metadata {
+                id: "broker_metadata_id".to_string(),
+                partitions: vec![],
+            },
+            Some(&custom_dir),
+        )
         .unwrap();
-        let filepath = get_metadata_filepath().unwrap();
+        let filepath = get_metadata_filepath(Some(&custom_dir)).unwrap();
         let file = fs::File::open(filepath);
         assert!(file.is_ok());
+        cleanup_nyx_storage(&custom_dir);
+    }
 
-        cleanup_nyx_storage().unwrap();
+    #[test]
+    fn tries_to_get_metadata_succeeds() {
+        let path: PathBuf = "tries_to_get_metadata_succeeds".into();
+        setup_nyx_dir_with_metadata(&path);
+        let result = try_get_metadata();
+        assert!(result.is_ok());
+        cleanup_nyx_storage(&path);
     }
 }
