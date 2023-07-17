@@ -26,7 +26,7 @@ impl Broker {
     pub fn new(stream: TcpStream) -> Result<Self, String> {
         let broker = match try_get_metadata() {
             Ok(metadata) => Self { stream, metadata },
-            Err(e) => {
+            Err(_e) => {
                 let id = Uuid::new_v4().to_string();
 
                 let metadata = Metadata {
@@ -60,8 +60,8 @@ fn try_get_metadata() -> Result<Metadata, String> {
 fn save_metadata_file(metadata: &Metadata) -> Result<(), String> {
     let nyx_dir = get_metadata_directory()?;
     let filepath = get_metadata_filepath()?;
-    fs::create_dir_all(&nyx_dir).map_err(|e| e.to_string())?;
-    let mut file = std::fs::File::create(&filepath).map_err(|e| e.to_string())?;
+    fs::create_dir_all(nyx_dir).map_err(|e| e.to_string())?;
+    let mut file = std::fs::File::create(filepath).map_err(|e| e.to_string())?;
     let payload = serde_json::to_string(metadata).map_err(|e| e.to_string())?;
     file.write(payload.as_bytes()).map_err(|e| e.to_string())?;
     Ok(())

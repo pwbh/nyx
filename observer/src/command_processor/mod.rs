@@ -22,15 +22,15 @@ impl CommandProcessor {
             .read_line(&mut self.buf)
             .map_err(|e| e.to_string())?;
 
-        if self.buf.trim().len() == 0 {
+        if self.buf.trim().is_empty() {
             self.buf.clear();
             return Err("Empty command".to_string());
         }
 
         let command = Command::from(&self.buf)?;
-        self.add_history((&self.buf).to_string());
+        self.add_history(self.buf.to_string());
         self.buf.clear();
-        return Ok(command);
+        Ok(command)
     }
 
     fn add_history(&mut self, raw_command: String) {
