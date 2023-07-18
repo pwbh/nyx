@@ -165,7 +165,7 @@ impl DistributionManager {
     // Distribution manager should start a failover, meaning it should find the replica that has disconnected and set all partition to PendingCreation
     // Each Partition should have a replica_id which is unique per replica to find it if such case occures.
 
-    // TODO: What happens when a broker has lost connection? We need to find new leader.
+    // TODO: What happens when a broker has lost connection? We need to find a new leader for all partition leaders.
     fn spawn_broker_reader(&self, broker: &Broker) -> Result<(), String> {
         let watch_stream = broker.stream.try_clone().map_err(|e| e.to_string())?;
 
