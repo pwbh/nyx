@@ -151,13 +151,7 @@ impl DistributionManager {
         broker: &mut Broker,
         metadata: (String, TcpStream, BufReader<TcpStream>),
     ) -> Result<(), String> {
-        broker.stream = metadata.1;
-        broker.reader = metadata.2;
-
-        for partition in broker.partitions.iter_mut() {
-            partition.status = Status::Up
-        }
-
+        broker.restore(metadata);
         self.spawn_broker_reader(broker)
     }
 
@@ -199,22 +193,21 @@ impl DistributionManager {
                     let mut brokers_lock = brokers.lock().unwrap();
 
                     if let Some(broker) = brokers_lock.iter_mut().find(|b| b.id == broker_id) {
-                        broker
-                            .partitions
-                            .iter_mut()
-                            .for_each(|p| p.status = Status::Down);
+                        broker.disconnect();
 
                         let offline_partitions: Vec<_> = broker
-                            .partitions
+                            .get_offline_partitions()
                             .iter()
                             .map(|p| (&p.id, &p.replica_id, p.replica_count))
                             .collect();
 
-                        println!("Partion ID\t\t\t\tReplica ID\t\t\t\tReplica Count");
                         for offline_partition in offline_partitions.iter() {
                             println!(
-                                "{}\t{}\t{}",
-                                offline_partition.0, offline_partition.1, offline_partition.2
+                                "Broker {}:\t{}\t{}\t{}",
+                                broker.id,
+                                offline_partition.0,
+                                offline_partition.1,
+                                offline_partition.2
                             );
                         }
                     } else {
@@ -269,7 +262,10 @@ fn replicate_partition(
 ) -> Result<(), String> {
     // Here we create a variable containing the total available brokers in the cluster to check whether it is less
     // then replication factor, if so we certain either way to we will replicate to all partitions
-    let total_available_brokers = brokers_lock.len();
+    let total_available_brokers = brokers_lock
+        .iter()
+        .filter(|b| b.status == Status::Up)
+        .count();
     let mut future_replications_required = replica_factor as i32 - total_available_brokers as i32;
 
     if future_replications_required > 0 {

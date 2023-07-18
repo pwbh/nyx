@@ -1,8 +1,6 @@
-use std::{
-    io::{BufRead, BufReader},
-    net::TcpStream,
-    thread::JoinHandle,
-};
+use std::{io::BufReader, net::TcpStream};
+
+use shared_structures::Status;
 
 use super::partition::Partition;
 
@@ -14,6 +12,7 @@ pub struct Broker {
     pub stream: TcpStream,
     pub partitions: Vec<Partition>,
     pub reader: BufReader<TcpStream>,
+    pub status: Status,
 }
 
 impl Broker {
@@ -23,31 +22,28 @@ impl Broker {
             partitions: vec![],
             stream: metadata.1,
             reader: metadata.2,
+            status: Status::Up,
         })
     }
-}
 
-fn spawn_broker_stream_reader(stream: TcpStream) -> JoinHandle<()> {
-    std::thread::spawn(move || {
-        println!(
-            "Broker read thread spawned for {}",
-            stream.peer_addr().unwrap()
-        );
+    pub fn restore(&mut self, metadata: (String, TcpStream, BufReader<TcpStream>)) {
+        self.status = Status::Up;
+        self.stream = metadata.1;
+        self.reader = metadata.2;
 
-        let mut buf = String::with_capacity(1024);
-        let mut reader = BufReader::new(&stream);
-
-        loop {
-            let data_size = reader.read_line(&mut buf).unwrap();
-            if data_size == 0 {
-                println!(
-                    "Connection with {} has been closed.",
-                    stream.peer_addr().unwrap()
-                );
-                break;
-            }
-            println!("read: {}", buf);
-            buf.clear();
+        for partition in self.partitions.iter_mut() {
+            partition.status = Status::Up
         }
-    })
+    }
+
+    pub fn disconnect(&mut self) {
+        self.status = Status::Down;
+        self.partitions
+            .iter_mut()
+            .for_each(|p| p.status = Status::Down);
+    }
+
+    pub fn get_offline_partitions(&self) -> &[Partition] {
+        &self.partitions
+    }
 }

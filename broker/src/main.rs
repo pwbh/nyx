@@ -6,12 +6,29 @@ use std::{
 };
 
 use broker::Broker;
+use clap::{arg, command};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut exit = false;
-    println_c("Initializing broker", 105);
 
-    let addr = std::env::args().nth(1).unwrap();
+    let matches = command!()
+    .arg(clap::Arg::new("host")
+        .required(true)
+    )
+    .arg(
+        arg!(-n --name <NAME> "Assigns a name to the broker, names are useful if you want to run two brokers on the same machine. Useful for nyx maintainers testing multi-node features.")
+        .required(false)
+    ).get_matches();
+
+    let addr = matches.get_one::<String>("host").unwrap();
+    let name = matches.get_one::<String>("name");
+
+    let log_name = match name {
+        Some(n) => n,
+        None => "broker",
+    };
+
+    println_c(&format!("Initializing {}", log_name), 105);
 
     let mut tcp_stream: Option<TcpStream> = None;
     let mut sleep_interval = 1000;
@@ -38,9 +55,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let stream: TcpStream = tcp_stream.ok_or("Stream is wrong")?;
 
-    let mut broker = Broker::new(stream)?;
+    let mut broker = Broker::new(stream, name)?;
 
     broker.handshake()?;
+
+    println_c("Initialization complete.", 35);
 
     let mut reader = BufReader::new(&broker.stream);
 

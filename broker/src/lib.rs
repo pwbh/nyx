@@ -19,12 +19,15 @@ pub struct Broker {
     pub stream: TcpStream,
 }
 
+// TODO: Broker might die if two brokers are running on the same machine with the current configuration
 impl Broker {
     // TODO: Need to add logic to save the broker local information about itself to a main folder on the filesystem
     // that will contain the information for the broker to use in a situtation where it crushed, or was
     // disconnected and is now reconnecting, should reconnect with the old information, including partitions etc.
-    pub fn new(stream: TcpStream) -> Result<Self, String> {
-        let broker = match try_get_metadata(None) {
+    pub fn new(stream: TcpStream, name: Option<&String>) -> Result<Self, String> {
+        let custom_dir: Option<PathBuf> = name.map(|f| f.into());
+
+        let broker = match try_get_metadata(custom_dir.as_ref()) {
             Ok(metadata) => Self { stream, metadata },
             Err(_e) => {
                 let id = Uuid::new_v4().to_string();
@@ -36,7 +39,7 @@ impl Broker {
 
                 let broker = Self { metadata, stream };
 
-                save_metadata_file(&broker.metadata, None)?;
+                save_metadata_file(&broker.metadata, custom_dir.as_ref())?;
 
                 broker
             }
@@ -79,11 +82,12 @@ fn get_metadata_filepath(custom_dir: Option<&PathBuf>) -> Result<PathBuf, String
 
 fn get_metadata_directory(custom_dir: Option<&PathBuf>) -> Result<PathBuf, String> {
     let final_path = if let Some(custom_dir) = custom_dir {
-        custom_dir
+        let dist = custom_dir
             .clone()
             .to_str()
             .ok_or("Invalid format provided for the directory")?
-            .to_string()
+            .to_string();
+        format!("nyx/{}", dist)
     } else {
         "nyx".to_string()
     };
