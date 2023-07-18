@@ -229,8 +229,6 @@ impl DistributionManager {
     }
 }
 
-// TODO: Think what to do about the pending replications, should it replicate to all the available brokers?
-// or should each partition be replicated on different brokers meaning partitions will be replicated only after new brokers added.
 fn replicate_pending_partitions(
     pending_replication_partitions: &mut Vec<(usize, Partition)>,
     brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
@@ -259,17 +257,6 @@ fn replicate_pending_partitions(
             break;
         }
     }
-
-    //  for (replications_needed, partition) in pending_replication_partitions.iter() {
-    //      let last_replica_count = partition.replica_count;
-    //
-    //      for replica_count in 1..=*replications_needed {
-    //          let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition)?;
-    //          let replica = Partition::replicate(partition, last_replica_count + replica_count);
-    //          least_distributed_broker.partitions.push(replica);
-    //          Broadcast::create_partition(least_distributed_broker, &partition.id)?;
-    //      }
-    //  }
 
     Ok(())
 }
