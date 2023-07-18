@@ -23,7 +23,7 @@ impl Broadcast {
 
             if bytes_written == 0 {
                 return Err(
-                    "0 bytes have been written, might be an error, plesae check".to_string()
+                    "0 bytes have been written, might be an error, please create a new issue in nyx repository.".to_string()
                 );
             }
         }
@@ -46,7 +46,7 @@ impl Broadcast {
         println!("Written bytes: {}", bytes_written);
 
         if bytes_written == 0 {
-            return Err("0 bytes have been written, might be an error, plesae check".to_string());
+            return Err("0 bytes have been written, might be an error, please create a new issue in nyx repository.".to_string());
         }
 
         Ok(())
