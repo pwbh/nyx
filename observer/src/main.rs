@@ -3,7 +3,7 @@ use observer::{distribution_manager::DistributionManager, Observer, DEV_CONFIG, 
 use shared_structures::Role;
 use std::{
     net::TcpStream,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard},
 };
 
 fn main() -> Result<(), String> {
@@ -97,12 +97,25 @@ fn handle_list_command(
     let level = command.arguments.first().unwrap();
 
     if level == "ALL" {
-        println!("{:#?}", distribution_manager_lock.brokers);
+        //    println!("{:#?}", distribution_manager_lock.brokers);
+        print_list_all(&distribution_manager_lock);
     } else {
         return Err("Such depth is not supported".to_string());
     }
 
     Ok(())
+}
+
+fn print_list_all(distribution_manager_lock: &MutexGuard<'_, DistributionManager>) {
+    let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
+
+    println!(".");
+    for broker in brokers_lock.iter() {
+        println!("├── Broker {}", broker.id);
+        for partition in broker.partitions.iter() {
+            println!("│   ├── Partition {}", partition.id)
+        }
+    }
 }
 
 fn handle_create_command(

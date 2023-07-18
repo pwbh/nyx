@@ -44,7 +44,7 @@ CREATE PARTITION [TOPIC_NAME]
 
 #### DELETE
 
-Delete topic (will delete all partitions)
+Delete topic (will fail if there are active partitions on the topic)
 
 ```
 DELETE TOPIC [TOPIC_NAME]
