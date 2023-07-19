@@ -90,7 +90,7 @@ mod tests {
         let client_to_server_stream_one: Arc<Mutex<Option<TcpStream>>> = Arc::new(Mutex::new(None));
         let client_to_server_stream_one_thread = client_to_server_stream_one.clone();
 
-        std::thread::spawn(move || {
+        let thread1 = std::thread::spawn(move || {
             let stream = TcpStream::connect("localhost:15000").unwrap();
             let mut lock = client_to_server_stream_one_thread.lock().unwrap();
             *lock = Some(stream);
@@ -99,7 +99,7 @@ mod tests {
         let client_to_server_stream_two: Arc<Mutex<Option<TcpStream>>> = Arc::new(Mutex::new(None));
         let client_to_server_stream_two_thread = client_to_server_stream_two.clone();
 
-        std::thread::spawn(move || {
+        let thread2 = std::thread::spawn(move || {
             let stream = TcpStream::connect("localhost:15000").unwrap();
             let mut lock = client_to_server_stream_two_thread.lock().unwrap();
             *lock = Some(stream);
@@ -109,7 +109,7 @@ mod tests {
             Arc::new(Mutex::new(None));
         let client_to_server_stream_three_thread = client_to_server_stream_three.clone();
 
-        std::thread::spawn(move || {
+        let thread3 = std::thread::spawn(move || {
             let stream = TcpStream::connect("localhost:15000").unwrap();
             let mut lock = client_to_server_stream_three_thread.lock().unwrap();
             *lock = Some(stream);
@@ -118,6 +118,10 @@ mod tests {
         let (mut server_to_client_stream_one, _) = listener.accept().unwrap();
         let (mut server_to_client_stream_two, _) = listener.accept().unwrap();
         let (mut server_to_client_stream_three, _) = listener.accept().unwrap();
+
+        thread1.join().unwrap();
+        thread2.join().unwrap();
+        thread3.join().unwrap();
 
         let mut streams = [
             &mut server_to_client_stream_one,
