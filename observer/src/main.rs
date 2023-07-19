@@ -9,9 +9,10 @@ use std::{
 fn main() -> Result<(), String> {
     let default_config_path_by_env = get_config_path_by_env();
     let matches = command!().arg(
-        arg!(-f --follow <HOST> "Runs the Observer as a follower for leader located at <HOST>, Host MUST by booted without -f flag.")
+        clap::Arg::new("config")
         .required(false)
-    ).arg(arg!(-c --config <PATH> "Config file to use when starting Observer.")
+    ).arg(
+        arg!(-f --follow <HOST> "Runs the Observer as a follower for leader located at <HOST>, Host MUST by booted without -f flag.")
         .required(false)
     ).get_matches();
 
