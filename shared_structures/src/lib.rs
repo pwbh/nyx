@@ -11,7 +11,8 @@ pub enum Role {
     Leader,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(PartialEq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Message<T: serde::Serialize> {
     CreatePartition(T),
+    Any(T),
 }
