@@ -1,5 +1,4 @@
 use std::{
-    f32::consts::E,
     io::{BufRead, BufReader},
     net::TcpStream,
     sync::{Arc, Mutex, MutexGuard},
