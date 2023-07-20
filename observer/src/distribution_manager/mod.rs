@@ -256,50 +256,6 @@ fn replicate_pending_partitions_once(
     Ok(())
 }
 
-fn replicate_pending_partitions(
-    pending_replication_partitions: &mut Vec<(usize, Partition)>,
-    brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
-) -> Result<(), String> {
-    println!("brokers: {:?}", brokers_lock);
-
-    loop {
-        if let Some((mut replications_needed, partition)) = pending_replication_partitions.pop() {
-            let mut total_new_replicas_possible = replications_needed as i32
-                - brokers_lock
-                    .iter()
-                    .filter(|b| b.status == Status::Up)
-                    .count() as i32;
-
-            if total_new_replicas_possible < 0 {
-                total_new_replicas_possible = replications_needed as i32;
-            }
-
-            let last_replica_count = partition.replica_count;
-
-            for replica_count in 1..=total_new_replicas_possible {
-                let least_distributed_broker =
-                    get_least_distributed_broker(brokers_lock, &partition)?;
-                let mut replica =
-                    Partition::replicate(&partition, last_replica_count + replica_count as usize);
-                Broadcast::replicate_partition(least_distributed_broker, &mut replica)?;
-                least_distributed_broker.partitions.push(replica);
-                println!("least_distributed_broker: {:?}", least_distributed_broker);
-
-                replications_needed -= 1;
-            }
-
-            if replications_needed != 0 {
-                pending_replication_partitions.push((replications_needed, partition));
-                break;
-            }
-        } else {
-            break;
-        }
-    }
-
-    Ok(())
-}
-
 fn replicate_partition(
     pending_replication_partitions: &mut Vec<(usize, Partition)>,
     brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
