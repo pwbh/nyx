@@ -1,4 +1,5 @@
 use std::{
+    f32::consts::E,
     io::{BufRead, BufReader},
     net::TcpStream,
     sync::{Arc, Mutex, MutexGuard},
@@ -46,15 +47,15 @@ impl DistributionManager {
             self.restore_disconnected_broker(disconnected_broker, metadata)?;
             Ok(disconnected_broker.id.clone())
         } else {
-            let broker = Broker::from(metadata)?;
+            let mut broker = Broker::from(metadata)?;
             self.spawn_broker_reader(&broker)?;
             let broker_id = broker.id.clone();
-            brokers_lock.push(broker);
             // Need to replicate the pending partitions if there is any
-            replicate_pending_partitions(
+            replicate_pending_partitions_once(
                 &mut self.pending_replication_partitions,
-                &mut brokers_lock,
+                &mut broker,
             )?;
+            brokers_lock.push(broker);
             Ok(broker_id)
         }
     }
@@ -222,22 +223,67 @@ impl DistributionManager {
     }
 }
 
+fn replicate_pending_partitions_once(
+    pending_replication_partitions: &mut Vec<(usize, Partition)>,
+    new_broker: &mut Broker,
+) -> Result<(), String> {
+    for (mut replications_needed, partition) in pending_replication_partitions.iter_mut().rev() {
+        let mut replica = Partition::replicate(&partition, partition.replica_count + 1);
+        Broadcast::replicate_partition(new_broker, &mut replica)?;
+        new_broker.partitions.push(replica);
+        partition.replica_count += 1;
+        replications_needed -= 1;
+    }
+
+    loop {
+        let current = pending_replication_partitions.last();
+
+        if let Some(pending_replication_partition) = current {
+            if pending_replication_partition.0 == 0 {
+                pending_replication_partitions.pop();
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    // Remove totally replicated partitions
+
+    println!("Current pending: {:?}", pending_replication_partitions);
+
+    Ok(())
+}
+
 fn replicate_pending_partitions(
     pending_replication_partitions: &mut Vec<(usize, Partition)>,
     brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
 ) -> Result<(), String> {
-    println!("{:?}", pending_replication_partitions);
+    println!("brokers: {:?}", brokers_lock);
+
     loop {
         if let Some((mut replications_needed, partition)) = pending_replication_partitions.pop() {
+            let mut total_new_replicas_possible = replications_needed as i32
+                - brokers_lock
+                    .iter()
+                    .filter(|b| b.status == Status::Up)
+                    .count() as i32;
+
+            if total_new_replicas_possible < 0 {
+                total_new_replicas_possible = replications_needed as i32;
+            }
+
             let last_replica_count = partition.replica_count;
 
-            for replica_count in 1..=replications_needed {
+            for replica_count in 1..=total_new_replicas_possible {
                 let least_distributed_broker =
                     get_least_distributed_broker(brokers_lock, &partition)?;
                 let mut replica =
-                    Partition::replicate(&partition, last_replica_count + replica_count);
+                    Partition::replicate(&partition, last_replica_count + replica_count as usize);
                 Broadcast::replicate_partition(least_distributed_broker, &mut replica)?;
                 least_distributed_broker.partitions.push(replica);
+                println!("least_distributed_broker: {:?}", least_distributed_broker);
 
                 replications_needed -= 1;
             }

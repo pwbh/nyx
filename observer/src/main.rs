@@ -49,7 +49,7 @@ fn main() -> Result<(), String> {
                 Ok(stream) => match handle_create_broker(&mut streams_distribution_manager, stream)
                 {
                     Ok(broker_id) => println!("Broker {} has connected.", broker_id),
-                    Err(e) => println!("{}", e),
+                    Err(e) => println!("Error: {}", e),
                 },
                 Err(e) => println!("Failed to establish connection: {}", e),
             }
