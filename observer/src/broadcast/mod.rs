@@ -8,7 +8,7 @@ pub struct Broadcast;
 
 impl Broadcast {
     pub fn all<T: serde::Serialize>(
-        streams: &mut [&mut TcpStream],
+        streams: &mut [TcpStream],
         message: &Message<T>,
     ) -> Result<(), String> {
         let mut payload = serde_json::to_string(message)
@@ -115,18 +115,18 @@ mod tests {
             *lock = Some(stream);
         });
 
-        let (mut server_to_client_stream_one, _) = listener.accept().unwrap();
-        let (mut server_to_client_stream_two, _) = listener.accept().unwrap();
-        let (mut server_to_client_stream_three, _) = listener.accept().unwrap();
+        let (server_to_client_stream_one, _) = listener.accept().unwrap();
+        let (server_to_client_stream_two, _) = listener.accept().unwrap();
+        let (server_to_client_stream_three, _) = listener.accept().unwrap();
 
         thread1.join().unwrap();
         thread2.join().unwrap();
         thread3.join().unwrap();
 
         let mut streams = [
-            &mut server_to_client_stream_one,
-            &mut server_to_client_stream_two,
-            &mut server_to_client_stream_three,
+            server_to_client_stream_one,
+            server_to_client_stream_two,
+            server_to_client_stream_three,
         ];
 
         let test_message = TestMessage {

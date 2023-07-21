@@ -86,7 +86,7 @@ impl DistributionManager {
     }
 
     // Need to rebalance if new partition is added to the broker
-    pub fn create_partition(&mut self, topic_name: &str) -> Result<usize, String> {
+    pub fn create_partition(&mut self, topic_name: &str) -> Result<String, String> {
         let mut brokers_lock = self.brokers.lock().unwrap();
 
         if brokers_lock.len() == 0 {
@@ -123,12 +123,12 @@ impl DistributionManager {
                 &partition,
             )?;
 
+            return Ok(partition.id.clone());
+
             // TODO: Should begin leadership race among replications of the Partition.
         } else {
             return Err(format!("Topic `{}` doesn't exist.", topic_name));
         }
-
-        Ok(*replica_factor as usize)
     }
 
     fn get_broker_metadata(
@@ -234,6 +234,7 @@ fn replicate_pending_partitions_once(
         replications_needed -= 1;
     }
 
+    // Remove totally replicated partitions
     loop {
         let current = pending_replication_partitions.last();
 
@@ -247,10 +248,6 @@ fn replicate_pending_partitions_once(
             break;
         }
     }
-
-    // Remove totally replicated partitions
-
-    println!("Current pending: {:?}", pending_replication_partitions);
 
     Ok(())
 }
@@ -317,6 +314,8 @@ fn get_least_distributed_broker<'a>(
 #[cfg(test)]
 mod tests {
     use std::{io::Write, net::TcpListener};
+
+    use crate::distribution_manager;
 
     use super::*;
 
@@ -448,6 +447,16 @@ mod tests {
         );
     }
 
+    fn get_brokers_with_replicas(
+        brokers_lock: &MutexGuard<'_, Vec<Broker>>,
+        partition_id: &str,
+    ) -> usize {
+        brokers_lock
+            .iter()
+            .filter(|b| b.partitions.iter().find(|p| p.id == partition_id).is_some())
+            .count()
+    }
+
     // TODO: Rewrite test to REALLY check the balancing of partitions
     #[test]
     fn craete_partition_distributes_replicas() {
@@ -458,56 +467,81 @@ mod tests {
         let distribution_manager = setup_distribution_for_tests(config, "5002");
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
-        let topic_name = "notifications";
+        let notifications_topic = "notifications";
 
-        distribution_manager_lock.create_topic(topic_name).unwrap();
-
-        let partition_replication_count_1 = distribution_manager_lock
-            .create_partition(topic_name)
+        // Create 'notifications' topic
+        distribution_manager_lock
+            .create_topic(notifications_topic)
             .unwrap();
 
-        assert_eq!(partition_replication_count_1, replica_factor as usize);
-
-        let partition_replication_count_2 = distribution_manager_lock
-            .create_partition(topic_name)
+        let partition_id_1 = distribution_manager_lock
+            .create_partition(notifications_topic)
             .unwrap();
+        let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
+        let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_1);
+        assert_eq!(total_brokers_with_replicas, replica_factor as usize);
+        drop(brokers_lock);
 
-        assert_eq!(partition_replication_count_2, replica_factor as usize);
+        let partition_id_2 = distribution_manager_lock
+            .create_partition(notifications_topic)
+            .unwrap();
+        let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
+        let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_2);
+        assert_eq!(total_brokers_with_replicas, replica_factor as usize);
+        drop(brokers_lock);
 
-        let topic_name = "comments";
+        let comments_topic = "comments";
 
-        distribution_manager_lock.create_topic(topic_name).unwrap();
+        // Create 'comments' topic
+        distribution_manager_lock
+            .create_topic(comments_topic)
+            .unwrap();
 
         // First partition for topic 'comments'
-        let partition_replication_count_3 = distribution_manager_lock
-            .create_partition(topic_name)
+        let partition_id_3 = distribution_manager_lock
+            .create_partition(comments_topic)
             .unwrap();
-
-        assert_eq!(partition_replication_count_3, replica_factor as usize);
+        let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
+        let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_3);
+        assert_eq!(total_brokers_with_replicas, replica_factor as usize);
+        drop(brokers_lock);
 
         // Second partition for topic 'comments'
-        let partition_replication_count_4 = distribution_manager_lock
-            .create_partition(topic_name)
+        let partition_id_4 = distribution_manager_lock
+            .create_partition(comments_topic)
             .unwrap();
+        let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
+        let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_4);
+        assert_eq!(total_brokers_with_replicas, replica_factor as usize);
+        drop(brokers_lock);
 
-        assert_eq!(partition_replication_count_4, replica_factor as usize);
+        let friend_requests_topic = "friend_requests";
 
-        let topic_name = "friend_requests";
-
-        distribution_manager_lock.create_topic(topic_name).unwrap();
+        // Create 'friend_requests' topic
+        distribution_manager_lock
+            .create_topic(friend_requests_topic)
+            .unwrap();
 
         // First partition for topic 'friend_requests'
-        let partition_replication_count_5 = distribution_manager_lock
+        let partition_id_5 = distribution_manager_lock
             .create_partition("friend_requests")
             .unwrap();
+        let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
+        let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_5);
+        assert_eq!(total_brokers_with_replicas, replica_factor as usize);
+        drop(brokers_lock);
 
-        assert_eq!(partition_replication_count_5, replica_factor as usize);
+        let mut unique_partitions = distribution_manager_lock
+            .brokers
+            .lock()
+            .unwrap()
+            .iter()
+            .flat_map(|b| b.partitions.clone())
+            .collect::<Vec<_>>();
 
-        let total_replicas = partition_replication_count_1
-            + partition_replication_count_2
-            + partition_replication_count_3
-            + partition_replication_count_4
-            + partition_replication_count_5;
+        unique_partitions.dedup_by_key(|p| p.id.clone());
+
+        println!("PARTITIONS: {:#?}", unique_partitions);
 
         let total_replicas_in_brokers: usize = distribution_manager_lock
             .brokers
@@ -517,7 +551,20 @@ mod tests {
             .map(|b| b.partitions.len())
             .sum();
 
-        assert_eq!(total_replicas, total_replicas_in_brokers);
+        assert_eq!(unique_partitions.len(), total_replicas_in_brokers);
+
+        // Testing that all brokers have the same amount of partition replicas (meaning it was balanced well - max fault tolerence)
+        let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
+
+        let split = brokers_lock.split_first();
+
+        if let Some((first, other)) = split {
+            for broker in other {
+                assert_eq!(first.partitions.len(), broker.partitions.len());
+            }
+        }
+
+        drop(brokers_lock);
 
         println!("{:#?}", distribution_manager_lock.brokers);
     }
