@@ -457,7 +457,6 @@ mod tests {
             .count()
     }
 
-    // TODO: Rewrite test to REALLY check the balancing of partitions
     #[test]
     fn craete_partition_distributes_replicas() {
         let config = config_mock();
