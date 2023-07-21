@@ -556,9 +556,7 @@ mod tests {
         // Testing that all brokers have the same amount of partition replicas (meaning it was balanced well - max fault tolerence)
         let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
 
-        let split = brokers_lock.split_first();
-
-        if let Some((first, other)) = split {
+        if let Some((first, other)) = brokers_lock.split_first() {
             for broker in other {
                 assert_eq!(first.partitions.len(), broker.partitions.len());
             }
