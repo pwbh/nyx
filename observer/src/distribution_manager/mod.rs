@@ -316,8 +316,6 @@ fn get_least_distributed_broker<'a>(
 mod tests {
     use std::{io::Write, net::TcpListener};
 
-    use crate::distribution_manager;
-
     use super::*;
 
     fn config_mock() -> Config {
