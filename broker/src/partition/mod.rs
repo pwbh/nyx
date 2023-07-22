@@ -1,8 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use shared_structures::{Role, Status};
-
-use crate::topic::Topic;
+use shared_structures::{Role, Status, Topic};
 
 mod record;
 
@@ -40,15 +38,11 @@ impl Partition {
 
 #[cfg(test)]
 mod tests {
-
-    use crate::topic;
-
     use super::*;
 
     #[test]
     fn creates_partition_on_broker() {
-        let topic =
-            topic::Topic::from("mock_topic_id".to_string(), "notifications".to_string()).unwrap();
+        let topic = Topic::from("notifications".to_string());
 
         let partition = Partition::from(
             "mocked_partition_id".to_string(),

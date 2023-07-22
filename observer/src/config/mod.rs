@@ -61,15 +61,15 @@ impl Config {
             .map(|v| if let Value::String(n) = v { n } else { "" })
     }
 
-    pub fn get_number(&self, k: &str) -> Option<&i32> {
+    pub fn get_number(&self, k: &str) -> Option<i32> {
         self.inner
             .get(k)
-            .map(|v| if let Value::Number(n) = v { n } else { &0 })
+            .map(|v| if let Value::Number(n) = v { *n } else { 0 })
     }
 
-    pub fn get_float(&self, k: &str) -> Option<&f32> {
+    pub fn get_float(&self, k: &str) -> Option<f32> {
         self.inner
             .get(k)
-            .map(|v| if let Value::Float(n) = v { n } else { &0f32 })
+            .map(|v| if let Value::Float(n) = v { *n } else { 0f32 })
     }
 }

@@ -1,3 +1,7 @@
+mod topic;
+
+pub use topic::Topic;
+
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Status {
     Created,
@@ -11,8 +15,11 @@ pub enum Role {
     Leader,
 }
 
-#[derive(PartialEq, Debug, serde::Serialize, serde::Deserialize)]
-pub enum Message<T: serde::Serialize> {
-    CreatePartition(T),
-    Any(T),
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub enum Message {
+    CreatePartition {
+        id: String,
+        replica_id: String,
+        topic: Topic,
+    },
 }

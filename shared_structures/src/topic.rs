@@ -7,7 +7,14 @@ pub struct Topic {
 }
 
 impl Topic {
-    pub fn new(name: String) -> Arc<Mutex<Self>> {
+    pub fn from(name: String) -> Self {
+        Self {
+            name,
+            partition_count: 0,
+        }
+    }
+
+    pub fn new_shared(name: String) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Self {
             name,
             partition_count: 0,

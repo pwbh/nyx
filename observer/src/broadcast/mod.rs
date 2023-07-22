@@ -7,10 +7,7 @@ use crate::distribution_manager::{Broker, Partition};
 pub struct Broadcast;
 
 impl Broadcast {
-    pub fn all<T: serde::Serialize>(
-        streams: &mut [TcpStream],
-        message: &Message<T>,
-    ) -> Result<(), String> {
+    pub fn all(streams: &mut [TcpStream], message: &Message) -> Result<(), String> {
         let mut payload = serde_json::to_string(message)
             .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
 
@@ -30,10 +27,7 @@ impl Broadcast {
         Ok(())
     }
 
-    pub fn to<T: serde::Serialize>(
-        stream: &mut TcpStream,
-        message: Message<T>,
-    ) -> Result<(), String> {
+    pub fn to(stream: &mut TcpStream, message: Message) -> Result<(), String> {
         let mut payload = serde_json::to_string(&message)
             .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
 
@@ -57,7 +51,11 @@ impl Broadcast {
     pub fn replicate_partition(broker: &mut Broker, replica: &mut Partition) -> Result<(), String> {
         Self::to(
             &mut broker.stream,
-            Message::CreatePartition(replica.clone()),
+            Message::CreatePartition {
+                id: replica.id.clone(),
+                replica_id: replica.replica_id.clone(),
+                topic: replica.topic.lock().unwrap().clone(),
+            },
         )?;
         // After successful creation of the partition on the broker,
         // we can set its status on the observer to Active.
@@ -75,13 +73,9 @@ mod tests {
         sync::{Arc, Mutex},
     };
 
-    use super::*;
+    use shared_structures::Topic;
 
-    #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize)]
-    struct TestMessage {
-        name: String,
-        age: usize,
-    }
+    use super::*;
 
     #[test]
     fn all_broadcasts_messages_to_everyone() {
@@ -129,14 +123,13 @@ mod tests {
             server_to_client_stream_three,
         ];
 
-        let test_message = TestMessage {
-            name: "Nyx Better Then Kafka".to_string(),
-            age: 0,
+        let test_message = Message::CreatePartition {
+            id: uuid::Uuid::new_v4().to_string(),
+            replica_id: uuid::Uuid::new_v4().to_string(),
+            topic: Topic::from("notifications".to_string()),
         };
 
-        let payload = Message::Any(test_message.clone());
-
-        let result = Broadcast::all(&mut streams, &payload);
+        let result = Broadcast::all(&mut streams, &test_message);
 
         assert!(result.is_ok());
 
@@ -150,45 +143,27 @@ mod tests {
         {
             let lock = client_to_server_stream_one.lock().unwrap();
             let result = lock.as_ref().unwrap().read_to_string(&mut buf).unwrap();
-            let data: Message<TestMessage> =
-                serde_json::from_str::<Message<TestMessage>>(buf.trim()).unwrap();
+            let data: Message = serde_json::from_str::<Message>(buf.trim()).unwrap();
             assert!(result > 0);
-            assert_eq!(
-                data,
-                Message::Any(TestMessage {
-                    ..test_message.clone()
-                })
-            );
+            assert!(matches!(data, Message::CreatePartition { .. }));
             buf.clear();
         }
 
         {
             let lock = client_to_server_stream_two.lock().unwrap();
             let result = lock.as_ref().unwrap().read_to_string(&mut buf).unwrap();
-            let data: Message<TestMessage> =
-                serde_json::from_str::<Message<TestMessage>>(buf.trim()).unwrap();
+            let data: Message = serde_json::from_str::<Message>(buf.trim()).unwrap();
             assert!(result > 0);
-            assert_eq!(
-                data,
-                Message::Any(TestMessage {
-                    ..test_message.clone()
-                })
-            );
+            assert!(matches!(data, Message::CreatePartition { .. }));
             buf.clear();
         }
 
         {
             let lock = client_to_server_stream_three.lock().unwrap();
             let result = lock.as_ref().unwrap().read_to_string(&mut buf).unwrap();
-            let data: Message<TestMessage> =
-                serde_json::from_str::<Message<TestMessage>>(buf.trim()).unwrap();
+            let data: Message = serde_json::from_str::<Message>(buf.trim()).unwrap();
             assert!(result > 0);
-            assert_eq!(
-                data,
-                Message::Any(TestMessage {
-                    ..test_message.clone()
-                })
-            );
+            assert!(matches!(data, Message::CreatePartition { .. }));
             buf.clear();
         }
     }

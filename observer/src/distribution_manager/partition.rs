@@ -1,8 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use shared_structures::{Role, Status};
-
-use super::topic::Topic;
+use shared_structures::{Role, Status, Topic};
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Partition {

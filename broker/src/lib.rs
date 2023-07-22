@@ -1,11 +1,12 @@
 use std::{fs, io::Write, net::TcpStream, path::PathBuf};
 
-use partition::Partition;
-
 use uuid::Uuid;
 
+mod message_handler;
 mod partition;
-mod topic;
+
+pub use message_handler::MessageHandler;
+pub use partition::Partition;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Metadata {

@@ -7,15 +7,14 @@ use std::{
 
 mod broker;
 mod partition;
-mod topic;
 
 pub use broker::Broker;
 pub use partition::Partition;
-use shared_structures::Status;
+use shared_structures::{Status, Topic};
 
 use crate::{broadcast::Broadcast, config::Config};
 
-use self::{broker::ID_FIELD_CHAR_COUNT, topic::Topic};
+use self::broker::ID_FIELD_CHAR_COUNT;
 
 #[derive(Debug)]
 pub struct DistributionManager {
@@ -79,7 +78,7 @@ impl DistributionManager {
             return Err(format!("Topic `{}` already exist.", topic_name));
         }
 
-        let topic = Topic::new(topic_name.to_string());
+        let topic = Topic::new_shared(topic_name.to_string());
         self.topics.push(topic);
 
         Ok(topic_name.to_string())
@@ -119,7 +118,7 @@ impl DistributionManager {
             replicate_partition(
                 &mut self.pending_replication_partitions,
                 &mut brokers_lock,
-                *replica_factor as usize,
+                replica_factor as usize,
                 &partition,
             )?;
 
@@ -166,7 +165,7 @@ impl DistributionManager {
         let brokers = Arc::clone(&self.brokers);
         let broker_id = broker.id.clone();
 
-        let throttle = *self
+        let throttle = self
             .config
             .get_number("throttle")
             .ok_or("Throttle is missing form the configuration file.")?;
@@ -461,7 +460,7 @@ mod tests {
     fn craete_partition_distributes_replicas() {
         let config = config_mock();
 
-        let replica_factor = *config.get_number("replica_factor").unwrap();
+        let replica_factor = config.get_number("replica_factor").unwrap();
 
         let distribution_manager = setup_distribution_for_tests(config, "5002");
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
