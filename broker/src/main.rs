@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use broker::{Broker, MessageHandler, Partition};
+use broker::{Broker, MessageHandler};
 use clap::{arg, command};
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -78,7 +78,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             exit = true;
         }
 
-        let result = MessageHandler::handle_incoming_message::<Partition>(&buf);
+        let result = MessageHandler::handle_incoming_message(&buf);
 
         println!("{:#?}", result);
 
