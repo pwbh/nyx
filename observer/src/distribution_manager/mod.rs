@@ -225,20 +225,22 @@ fn replicate_pending_partitions_once(
     pending_replication_partitions: &mut Vec<(usize, Partition)>,
     new_broker: &mut Broker,
 ) -> Result<(), String> {
-    for (mut replications_needed, partition) in pending_replication_partitions.iter_mut().rev() {
+    for (replications_needed, partition) in pending_replication_partitions.iter_mut().rev() {
         let mut replica = Partition::replicate(&partition, partition.replica_count + 1);
         Broadcast::replicate_partition(new_broker, &mut replica)?;
         new_broker.partitions.push(replica);
         partition.replica_count += 1;
-        replications_needed -= 1;
+        *replications_needed -= 1;
     }
+
+    println!("{:#?}", pending_replication_partitions);
 
     // Remove totally replicated partitions
     loop {
         let current = pending_replication_partitions.last();
 
-        if let Some(pending_replication_partition) = current {
-            if pending_replication_partition.0 == 0 {
+        if let Some((pending_replications, _)) = current {
+            if *pending_replications == 0 {
                 pending_replication_partitions.pop();
             } else {
                 break;
