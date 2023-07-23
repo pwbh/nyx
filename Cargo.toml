@@ -1,5 +1,5 @@
 [workspace]
-members = ["broker", "observer", "shared_structures"]
+members = ["broker", "observer", "shared_structures", "producer", "consumer"]
 
 [workspace.package]
 name = "nyx"

@@ -9,8 +9,6 @@ use broker::{Broker, MessageHandler};
 use clap::{arg, command};
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut exit = false;
-
     let matches = command!()
     .arg(clap::Arg::new("host")
         .required(true)
@@ -57,30 +55,26 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut broker = Broker::new(stream, name)?;
 
-    broker.handshake()?;
-
     println_c("Initialization complete.", 35);
 
-    let mut reader = BufReader::new(&broker.stream);
+    let reader_stream = broker.stream.try_clone().map_err(|e| e.to_string())?;
+
+    let mut message_handler = MessageHandler::from(&mut broker)?;
+
+    let mut reader = BufReader::new(reader_stream);
 
     let mut buf = String::with_capacity(1024);
 
     // Reader loop
     loop {
-        if exit {
-            break;
-        }
-
         let size = reader.read_line(&mut buf).map_err(|e| e.to_string())?;
 
         if size == 0 {
             println!("Connection with observer has been closed, exiting.");
-            exit = true;
+            break;
         }
 
-        let result = MessageHandler::handle_incoming_message(&buf);
-
-        println!("{:#?}", result);
+        message_handler.handle_raw_message(&buf)?;
 
         buf.clear();
     }

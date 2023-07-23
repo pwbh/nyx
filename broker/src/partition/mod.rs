@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    net::TcpStream,
+    sync::{Arc, Mutex},
+};
 
 use shared_structures::{Role, Status, Topic};
 
@@ -7,6 +10,7 @@ mod record;
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Partition {
     pub id: String,
+    pub replica_id: String,
     pub status: Status,
     pub topic: Arc<Mutex<Topic>>,
     pub role: Role,
@@ -18,6 +22,7 @@ pub struct Partition {
 impl Partition {
     pub fn from(
         id: String,
+        replica_id: String,
         status: Status,
         topic: Topic,
         role: Role,
@@ -26,6 +31,7 @@ impl Partition {
     ) -> Result<Self, String> {
         Ok(Self {
             id,
+            replica_id,
             status,
             topic: Arc::new(Mutex::new(topic)),
             role,
@@ -34,6 +40,8 @@ impl Partition {
             queue: vec![],
         })
     }
+
+    // pub fn send_candidacy_for_leadership(&self, observer: &TcpStream) -> Result<()> {}
 }
 
 #[cfg(test)]
@@ -46,6 +54,7 @@ mod tests {
 
         let partition = Partition::from(
             "mocked_partition_id".to_string(),
+            "mocked_partition_replica_id".to_string(),
             Status::Up,
             topic,
             Role::Follower,

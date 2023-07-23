@@ -22,4 +22,9 @@ pub enum Message {
         replica_id: String,
         topic: Topic,
     },
+    LeadershipRequest {
+        broker_id: String,
+        partition_id: String,
+        replica_id: String,
+    },
 }

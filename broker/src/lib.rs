@@ -18,18 +18,20 @@ pub struct Metadata {
 pub struct Broker {
     pub metadata: Metadata,
     pub stream: TcpStream,
+    custom_dir: Option<PathBuf>,
 }
 
-// TODO: Broker might die if two brokers are running on the same machine with the current configuration
 impl Broker {
-    // TODO: Need to add logic to save the broker local information about itself to a main folder on the filesystem
-    // that will contain the information for the broker to use in a situtation where it crushed, or was
-    // disconnected and is now reconnecting, should reconnect with the old information, including partitions etc.
+    /// Broker will automatically initiate a handshake with the Observer
     pub fn new(stream: TcpStream, name: Option<&String>) -> Result<Self, String> {
         let custom_dir: Option<PathBuf> = name.map(|f| f.into());
 
-        let broker = match try_get_metadata(custom_dir.as_ref()) {
-            Ok(metadata) => Self { stream, metadata },
+        let mut broker = match try_get_metadata(custom_dir.as_ref()) {
+            Ok(metadata) => Self {
+                stream,
+                metadata,
+                custom_dir,
+            },
             Err(_e) => {
                 let id = Uuid::new_v4().to_string();
 
@@ -38,27 +40,46 @@ impl Broker {
                     partitions: vec![],
                 };
 
-                let broker = Self { metadata, stream };
+                let broker = Self {
+                    metadata,
+                    stream,
+                    custom_dir,
+                };
 
-                save_metadata_file(&broker.metadata, custom_dir.as_ref())?;
+                broker.save_metadata_file()?;
 
                 broker
             }
         };
 
+        broker.handshake()?;
+
         Ok(broker)
     }
 
-    pub fn handshake(&mut self) -> std::io::Result<usize> {
+    fn handshake(&mut self) -> Result<(), String> {
         let payload = format!("{}\n", self.metadata.id);
-        self.stream.write(payload.as_bytes())
-    }
-}
 
-fn try_get_metadata(custom_dir: Option<&PathBuf>) -> Result<Metadata, String> {
-    let filepath = get_metadata_filepath(custom_dir)?;
-    let content = fs::read_to_string(filepath).map_err(|e| e.to_string())?;
-    serde_json::from_str::<Metadata>(&content).map_err(|e| e.to_string())
+        let bytes_written = self
+            .stream
+            .write(payload.as_bytes())
+            .map_err(|e| e.to_string())?;
+
+        if bytes_written == 0 {
+            return Err("Handshake failed, failed to write to Observer.".to_string());
+        }
+
+        Ok(())
+    }
+
+    fn save_metadata_file(&self) -> Result<(), String> {
+        save_metadata_file(&self.metadata, self.custom_dir.as_ref())
+    }
+
+    fn create_partition(&mut self, partition: Partition) -> Result<(), String> {
+        self.metadata.partitions.push(partition);
+        self.save_metadata_file()
+    }
 }
 
 fn save_metadata_file(metadata: &Metadata, custom_dir: Option<&PathBuf>) -> Result<(), String> {
@@ -69,6 +90,12 @@ fn save_metadata_file(metadata: &Metadata, custom_dir: Option<&PathBuf>) -> Resu
     let payload = serde_json::to_string(metadata).map_err(|e| e.to_string())?;
     file.write(payload.as_bytes()).map_err(|e| e.to_string())?;
     Ok(())
+}
+
+fn try_get_metadata(custom_dir: Option<&PathBuf>) -> Result<Metadata, String> {
+    let filepath = get_metadata_filepath(custom_dir)?;
+    let content = fs::read_to_string(filepath).map_err(|e| e.to_string())?;
+    serde_json::from_str::<Metadata>(&content).map_err(|e| e.to_string())
 }
 
 fn get_metadata_filepath(custom_dir: Option<&PathBuf>) -> Result<PathBuf, String> {
