@@ -81,41 +81,28 @@ mod tests {
     fn all_broadcasts_messages_to_everyone() {
         let listener = TcpListener::bind("localhost:15000").unwrap();
 
-        let client_to_server_stream_one: Arc<Mutex<Option<TcpStream>>> = Arc::new(Mutex::new(None));
-        let client_to_server_stream_one_thread = client_to_server_stream_one.clone();
-
         let thread1 = std::thread::spawn(move || {
             let stream = TcpStream::connect("localhost:15000").unwrap();
-            let mut lock = client_to_server_stream_one_thread.lock().unwrap();
-            *lock = Some(stream);
+            stream
         });
-
-        let client_to_server_stream_two: Arc<Mutex<Option<TcpStream>>> = Arc::new(Mutex::new(None));
-        let client_to_server_stream_two_thread = client_to_server_stream_two.clone();
 
         let thread2 = std::thread::spawn(move || {
             let stream = TcpStream::connect("localhost:15000").unwrap();
-            let mut lock = client_to_server_stream_two_thread.lock().unwrap();
-            *lock = Some(stream);
+            stream
         });
-
-        let client_to_server_stream_three: Arc<Mutex<Option<TcpStream>>> =
-            Arc::new(Mutex::new(None));
-        let client_to_server_stream_three_thread = client_to_server_stream_three.clone();
 
         let thread3 = std::thread::spawn(move || {
             let stream = TcpStream::connect("localhost:15000").unwrap();
-            let mut lock = client_to_server_stream_three_thread.lock().unwrap();
-            *lock = Some(stream);
+            stream
         });
 
         let (server_to_client_stream_one, _) = listener.accept().unwrap();
         let (server_to_client_stream_two, _) = listener.accept().unwrap();
         let (server_to_client_stream_three, _) = listener.accept().unwrap();
 
-        thread1.join().unwrap();
-        thread2.join().unwrap();
-        thread3.join().unwrap();
+        let mut client_to_server_stream_one = thread1.join().unwrap();
+        let mut client_to_server_stream_two = thread2.join().unwrap();
+        let mut client_to_server_stream_three = thread3.join().unwrap();
 
         let mut streams = [
             server_to_client_stream_one,
@@ -141,8 +128,9 @@ mod tests {
         let mut buf = String::with_capacity(1024);
 
         {
-            let lock = client_to_server_stream_one.lock().unwrap();
-            let result = lock.as_ref().unwrap().read_to_string(&mut buf).unwrap();
+            let result = client_to_server_stream_one
+                .read_to_string(&mut buf)
+                .unwrap();
             let data: Message = serde_json::from_str::<Message>(buf.trim()).unwrap();
             assert!(result > 0);
             assert!(matches!(data, Message::CreatePartition { .. }));
@@ -150,8 +138,9 @@ mod tests {
         }
 
         {
-            let lock = client_to_server_stream_two.lock().unwrap();
-            let result = lock.as_ref().unwrap().read_to_string(&mut buf).unwrap();
+            let result = client_to_server_stream_two
+                .read_to_string(&mut buf)
+                .unwrap();
             let data: Message = serde_json::from_str::<Message>(buf.trim()).unwrap();
             assert!(result > 0);
             assert!(matches!(data, Message::CreatePartition { .. }));
@@ -159,8 +148,9 @@ mod tests {
         }
 
         {
-            let lock = client_to_server_stream_three.lock().unwrap();
-            let result = lock.as_ref().unwrap().read_to_string(&mut buf).unwrap();
+            let result = client_to_server_stream_three
+                .read_to_string(&mut buf)
+                .unwrap();
             let data: Message = serde_json::from_str::<Message>(buf.trim()).unwrap();
             assert!(result > 0);
             assert!(matches!(data, Message::CreatePartition { .. }));
