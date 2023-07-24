@@ -10,11 +10,9 @@ mod partition;
 
 pub use broker::Broker;
 pub use partition::Partition;
-use shared_structures::{Status, Topic};
+use shared_structures::{Message, Status, Topic};
 
 use crate::{broadcast::Broadcast, config::Config};
-
-use self::broker::ID_FIELD_CHAR_COUNT;
 
 #[derive(Debug)]
 pub struct DistributionManager {
@@ -39,13 +37,15 @@ impl DistributionManager {
     // meaning that this broker has disconnected in one of many possible ways, including user interference, unexpected system crush
     // or any other reason. Observer should try and sync with the brokers via the brokers provided id.
     pub fn create_broker(&mut self, stream: TcpStream) -> Result<String, String> {
-        let metadata = self.get_broker_metadata(stream)?;
+        // Handshake process between the Broker and Observer happening in get_broker_metadata
+        let (id, stream) = self.get_broker_metadata(stream)?;
         let mut brokers_lock = self.brokers.lock().unwrap();
-        if let Some(disconnected_broker) = brokers_lock.iter_mut().find(|b| b.id == metadata.0) {
-            self.restore_disconnected_broker(disconnected_broker, metadata)?;
+        if let Some(disconnected_broker) = brokers_lock.iter_mut().find(|b| b.id == id) {
+            disconnected_broker.restore(stream)?;
+            self.spawn_broker_reader(&disconnected_broker)?;
             Ok(disconnected_broker.id.clone())
         } else {
-            let mut broker = Broker::from(metadata)?;
+            let mut broker = Broker::from(id, stream)?;
             self.spawn_broker_reader(&broker)?;
             let broker_id = broker.id.clone();
             // Need to replicate the pending partitions if there is any
@@ -130,28 +130,31 @@ impl DistributionManager {
         }
     }
 
-    fn get_broker_metadata(
-        &self,
-        stream: TcpStream,
-    ) -> Result<(String, TcpStream, BufReader<TcpStream>), String> {
-        let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
-        let mut reader = BufReader::new(read_stream);
+    fn get_broker_metadata(&self, stream: TcpStream) -> Result<(String, TcpStream), String> {
+        let mut buf = String::with_capacity(1024);
 
-        let mut id: String = String::with_capacity(ID_FIELD_CHAR_COUNT);
-        reader.read_line(&mut id).map_err(|e| e.to_string())?;
+        let mut reader = BufReader::new(&stream);
 
-        let id = id.trim();
+        let bytes_read = reader.read_line(&mut buf).map_err(|e| e.to_string())?;
 
-        Ok((id.to_string(), stream, reader))
-    }
+        if bytes_read == 0 {
+            return Err("Client exited unexpectadly during handhsake.".to_string());
+        }
 
-    fn restore_disconnected_broker(
-        &self,
-        broker: &mut Broker,
-        metadata: (String, TcpStream, BufReader<TcpStream>),
-    ) -> Result<(), String> {
-        broker.restore(metadata);
-        self.spawn_broker_reader(broker)
+        let message = match serde_json::from_str::<Message>(&buf) {
+            Ok(m) => m,
+            Err(_) => {
+                return Err(
+                    "Handshake with client failed, unrecognized payload received".to_string(),
+                )
+            }
+        };
+
+        if let Message::BrokerWantsToConnect { id, .. } = message {
+            Ok((id, stream))
+        } else {
+            Err("Handshake with client failed, wrong message received from client.".to_string())
+        }
     }
 
     // TODO: What should the distribution_manager do when there is only one broker, and it has disconnected due to a crash?

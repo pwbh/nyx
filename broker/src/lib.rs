@@ -1,5 +1,6 @@
 use std::{fs, io::Write, net::TcpStream, path::PathBuf};
 
+use shared_structures::Message;
 use uuid::Uuid;
 
 mod message_handler;
@@ -58,7 +59,13 @@ impl Broker {
     }
 
     fn handshake(&mut self) -> Result<(), String> {
-        let payload = format!("{}\n", self.metadata.id);
+        let mut payload = serde_json::to_string(&Message::BrokerWantsToConnect {
+            id: self.metadata.id.clone(),
+            random_hash: "aodksaodaodkadkaod".to_string(),
+        })
+        .map_err(|e| e.to_string())?;
+
+        payload.push('\n');
 
         let bytes_written = self
             .stream

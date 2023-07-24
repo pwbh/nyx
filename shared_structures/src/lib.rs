@@ -27,4 +27,8 @@ pub enum Message {
         partition_id: String,
         replica_id: String,
     },
+    BrokerWantsToConnect {
+        id: String,
+        random_hash: String,
+    },
 }

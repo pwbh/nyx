@@ -16,24 +16,32 @@ pub struct Broker {
 }
 
 impl Broker {
-    pub fn from(metadata: (String, TcpStream, BufReader<TcpStream>)) -> Result<Self, String> {
+    pub fn from(id: String, stream: TcpStream) -> Result<Self, String> {
+        let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
+        let reader = BufReader::new(read_stream);
+
         Ok(Self {
-            id: metadata.0,
+            id,
             partitions: vec![],
-            stream: metadata.1,
-            reader: metadata.2,
+            stream,
+            reader,
             status: Status::Up,
         })
     }
 
-    pub fn restore(&mut self, metadata: (String, TcpStream, BufReader<TcpStream>)) {
+    pub fn restore(&mut self, stream: TcpStream) -> Result<(), String> {
+        let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
+        let reader = BufReader::new(read_stream);
+
         self.status = Status::Up;
-        self.stream = metadata.1;
-        self.reader = metadata.2;
+        self.stream = stream;
+        self.reader = reader;
 
         for partition in self.partitions.iter_mut() {
             partition.status = Status::Up
         }
+
+        Ok(())
     }
 
     pub fn disconnect(&mut self) {
