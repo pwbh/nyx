@@ -81,11 +81,11 @@ mod tests {
     fn all_broadcasts_messages_to_everyone() {
         let listener = TcpListener::bind("localhost:15000").unwrap();
 
-        let thread1 = std::thread::spawn(move || TcpStream::connect("localhost:15000").unwrap());
+        let thread1 = std::thread::spawn(|| TcpStream::connect("localhost:15000").unwrap());
 
-        let thread2 = std::thread::spawn(move || TcpStream::connect("localhost:15000").unwrap());
+        let thread2 = std::thread::spawn(|| TcpStream::connect("localhost:15000").unwrap());
 
-        let thread3 = std::thread::spawn(move || TcpStream::connect("localhost:15000").unwrap());
+        let thread3 = std::thread::spawn(|| TcpStream::connect("localhost:15000").unwrap());
 
         let (server_to_client_stream_one, _) = listener.accept().unwrap();
         let (server_to_client_stream_two, _) = listener.accept().unwrap();
