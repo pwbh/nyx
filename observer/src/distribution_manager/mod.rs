@@ -392,7 +392,7 @@ mod tests {
 
         let spawned_thread = std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
-            return stream;
+            stream
         });
 
         mock_connecting_broker(&addr);
