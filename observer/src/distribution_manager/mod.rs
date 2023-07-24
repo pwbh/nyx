@@ -327,7 +327,14 @@ mod tests {
 
     fn mock_connecting_broker(addr: &str) -> TcpStream {
         let mut mock_stream = TcpStream::connect(addr).unwrap();
-        let payload = format!("{}\n", uuid::Uuid::new_v4());
+        let mut payload = serde_json::to_string(&Message::BrokerWantsToConnect {
+            id: uuid::Uuid::new_v4().to_string(),
+            random_hash: "abc".to_string(),
+        })
+        .unwrap();
+
+        payload.push('\n');
+
         mock_stream.write(payload.as_bytes()).unwrap();
         let read_stream = mock_stream.try_clone().unwrap();
 
@@ -383,13 +390,18 @@ mod tests {
         let addr = "localhost:8989";
         let listener = TcpListener::bind(addr).unwrap();
 
-        std::thread::spawn(move || loop {
-            listener.accept().unwrap();
+        let spawned_thread = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            return stream;
         });
 
-        let mock_stream_1 = TcpStream::connect(addr).unwrap();
+        mock_connecting_broker(&addr);
 
-        let result = distribution_manager_lock.create_broker(mock_stream_1);
+        let stream = spawned_thread.join().unwrap();
+
+        let result = distribution_manager_lock.create_broker(stream);
+
+        println!("{:?}", result);
 
         assert!(result.is_ok())
     }
