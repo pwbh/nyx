@@ -10,19 +10,29 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
+  test:
+    name: 'Test'
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v3
-      - name: Run clippy
-        run: |-
-          rustup component add clippy
-          cargo clippy
-      - name: Run tests & miri
-        run: |-
-          rustup +nightly component add miri
-          cargo test --verbose
-          MIRIRFLAGS="-Zmiri-tag-raw-pointers" cargo +nightly-x86_64-apple-darwin miri test
+      - name: Test
+        run: cargo test --verbose
+  miri:
+    name: 'Miri'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Miri
+        run: |
+          rustup toolchain install nightly --component miri
+          rustup override set nightly
+          cargo miri setup
+      - name: Test with Miri
+        run: cargo miri test
+  build:
+    name: 'Build'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
       - name: Build
         run: cargo build --verbose
