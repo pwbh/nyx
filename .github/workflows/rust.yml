@@ -21,8 +21,8 @@ jobs:
           cargo clippy
       - name: Run tests & miri
         run: |-
-        rustup +nightly component add miri
-        cargo test --verbose
-        MIRIRFLAGS="-Zmiri-tag-raw-pointers" cargo +nightly-x86_64-apple-darwin miri test
+          rustup +nightly component add miri
+          cargo test --verbose
+          MIRIRFLAGS="-Zmiri-tag-raw-pointers" cargo +nightly-x86_64-apple-darwin miri test
       - name: Build
         run: cargo build --verbose
