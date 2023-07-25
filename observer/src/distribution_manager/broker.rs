@@ -4,8 +4,6 @@ use shared_structures::Status;
 
 use super::partition::Partition;
 
-pub const ID_FIELD_CHAR_COUNT: usize = 36;
-
 #[derive(Debug)]
 pub struct Broker {
     pub id: String,

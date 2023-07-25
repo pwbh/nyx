@@ -1,6 +1,6 @@
 use std::{fs, io::Write, net::TcpStream, path::PathBuf};
 
-use shared_structures::Message;
+use shared_structures::{Broadcast, Message};
 use uuid::Uuid;
 
 mod message_handler;
@@ -59,24 +59,12 @@ impl Broker {
     }
 
     fn handshake(&mut self) -> Result<(), String> {
-        let mut payload = serde_json::to_string(&Message::BrokerWantsToConnect {
-            id: self.metadata.id.clone(),
-            random_hash: "aodksaodaodkadkaod".to_string(),
-        })
-        .map_err(|e| e.to_string())?;
-
-        payload.push('\n');
-
-        let bytes_written = self
-            .stream
-            .write(payload.as_bytes())
-            .map_err(|e| e.to_string())?;
-
-        if bytes_written == 0 {
-            return Err("Handshake failed, failed to write to Observer.".to_string());
-        }
-
-        Ok(())
+        Broadcast::to(
+            &mut self.stream,
+            &Message::BrokerWantsToConnect {
+                id: self.metadata.id.clone(),
+            },
+        )
     }
 
     fn save_metadata_file(&self) -> Result<(), String> {

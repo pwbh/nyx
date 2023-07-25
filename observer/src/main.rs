@@ -1,8 +1,7 @@
 use clap::{arg, command};
 use observer::{distribution_manager::DistributionManager, Observer, DEV_CONFIG, PROD_CONFIG};
-use shared_structures::{Message, Role};
+use shared_structures::Role;
 use std::{
-    io::Read,
     net::TcpStream,
     sync::{Arc, Mutex, MutexGuard},
 };
@@ -134,24 +133,6 @@ fn handle_create_command(
         },
         None => Err("Entity type was not provided.".to_string()),
     }
-}
-
-fn handle_handshake_request(
-    distribution_manager: &mut Arc<Mutex<DistributionManager>>,
-    mut stream: TcpStream,
-) -> Result<TcpStream, String> {
-    let mut buf = Vec::with_capacity(1024);
-    let bytes_read = stream.read_to_end(&mut buf).map_err(|e| e.to_string())?;
-
-    if bytes_read == 0 {
-        return Err("Client exited unexpectadly during handhsake.".to_string());
-    }
-
-    let message = serde_json::from_slice::<Message>(&buf[..]).map_err(|e| e.to_string())?;
-
-    if let Message::BrokerWantsToConnect { id, random_hash } = message {}
-
-    Ok(stream)
 }
 
 fn handle_create_broker(

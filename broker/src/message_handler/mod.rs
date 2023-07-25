@@ -30,8 +30,8 @@ impl<'a> MessageHandler<'a> {
                 replica_id,
                 topic,
             } => self.handle_create_partition(id, replica_id, topic),
-            Message::ProducerWantsToConnect => {
-                println!("Producer connected.");
+            Message::ProducerWantsToConnect { topic } => {
+                println!("Producer wants to connect to topic `{}`", topic);
                 // TODO: Should send back data with the locations (hosts) that hold the partition for given topic.
                 Ok(())
             }

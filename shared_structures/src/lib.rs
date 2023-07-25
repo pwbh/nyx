@@ -1,7 +1,9 @@
 mod broadcast;
+mod metadata;
 mod topic;
 
 pub use broadcast::Broadcast;
+pub use metadata::Metadata;
 pub use topic::Topic;
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -17,6 +19,7 @@ pub enum Role {
     Leader,
 }
 
+// TODO: Think of a way to better organize this enum
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum Message {
     CreatePartition {
@@ -24,14 +27,20 @@ pub enum Message {
         replica_id: String,
         topic: Topic,
     },
-    LeadershipRequest {
+    RequestLeadership {
         broker_id: String,
         partition_id: String,
         replica_id: String,
     },
+    DenyLeadership,
     BrokerWantsToConnect {
         id: String,
-        random_hash: String,
     },
-    ProducerWantsToConnect,
+    ProducerWantsToConnect {
+        topic: String,
+    },
+    RequestClusterMetadata,
+    ClusterMetadata {
+        metadata: Metadata,
+    },
 }

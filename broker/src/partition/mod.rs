@@ -1,7 +1,4 @@
-use std::{
-    net::TcpStream,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use shared_structures::{Role, Status, Topic};
 

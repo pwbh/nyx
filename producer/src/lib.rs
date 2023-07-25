@@ -26,7 +26,9 @@ impl Producer {
             let mut stream = TcpStream::connect(host).map_err(|e| e.to_string())?;
             Broadcast::to(
                 &mut stream,
-                &shared_structures::Message::ProducerWantsToConnect,
+                &shared_structures::Message::ProducerWantsToConnect {
+                    topic: "abc".to_string(),
+                },
             )?;
             // TODO: should wait for the information from the broker that contains where do all the partitions for requested topic live in the cluster
             self.streams.push(stream);
