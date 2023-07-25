@@ -28,6 +28,7 @@ impl Producer {
                 &mut stream,
                 &shared_structures::Message::ProducerWantsToConnect,
             )?;
+            // TODO: should wait for the information from the broker that contains where do all the partitions for requested topic live in the cluster
             self.streams.push(stream);
         }
 

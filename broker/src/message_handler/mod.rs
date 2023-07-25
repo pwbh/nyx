@@ -32,6 +32,7 @@ impl<'a> MessageHandler<'a> {
             } => self.handle_create_partition(id, replica_id, topic),
             Message::ProducerWantsToConnect => {
                 println!("Producer connected.");
+                // TODO: Should send back data with the locations (hosts) that hold the partition for given topic.
                 Ok(())
             }
             _ => Err("Couldn't decode the message".to_string()),
