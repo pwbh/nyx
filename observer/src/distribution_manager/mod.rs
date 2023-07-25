@@ -399,6 +399,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn create_brokers_works_as_expected() {
         let config = config_mock();
         let distribution_manager: Arc<Mutex<DistributionManager>> =
@@ -425,6 +426,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn create_topic_fails_when_no_brokers() {
         let config = config_mock();
         let distribution_manager: Arc<Mutex<DistributionManager>> =
@@ -442,6 +444,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn create_topic_works_as_expected_when_brokers_exist() {
         let config = config_mock();
 
@@ -490,7 +493,8 @@ mod tests {
     }
 
     #[test]
-    fn craete_partition_distributes_replicas() {
+    #[cfg_attr(miri, ignore)]
+    fn create_partition_distributes_replicas() {
         let config = config_mock();
 
         let replica_factor = config.get_number("replica_factor").unwrap();

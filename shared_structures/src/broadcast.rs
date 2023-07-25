@@ -54,6 +54,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn all_broadcasts_messages_to_everyone() {
         let listener = TcpListener::bind("localhost:15000").unwrap();
 

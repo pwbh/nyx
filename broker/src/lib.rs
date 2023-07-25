@@ -151,18 +151,21 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn get_metadata_directory_returns_dir_as_expected() {
         let dir = get_metadata_directory(None).unwrap();
         assert!(dir.to_str().unwrap().contains("nyx"));
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn get_metadata_filepath_returns_filepath_as_expected() {
         let filepath = get_metadata_filepath(None).unwrap();
         assert!(filepath.to_str().unwrap().contains("nyx/metadata.json"));
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn save_metadata_file_saves_file_to_designated_location() {
         let custom_dir: PathBuf = "save_metadata_file_saves_file_to_designated_location".into();
         save_metadata_file(
@@ -180,6 +183,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn tries_to_get_metadata_succeeds() {
         let custom_dir: PathBuf = "tries_to_get_metadata_succeeds".into();
         setup_nyx_dir_with_metadata(&custom_dir);
