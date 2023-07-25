@@ -32,10 +32,7 @@ jobs:
         run: cargo miri test
   build:
     name: 'Build'
-    needs: [
-        test
-        miri,
-      ]
+    needs: [test, miri]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
