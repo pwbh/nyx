@@ -9,3 +9,4 @@ description = "Shared structures between the Observer and Broker"
 [dependencies]
 uuid.workspace = true
 serde.workspace = true
+serde_json.workspace = true

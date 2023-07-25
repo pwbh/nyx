@@ -10,9 +10,9 @@ mod partition;
 
 pub use broker::Broker;
 pub use partition::Partition;
-use shared_structures::{Message, Status, Topic};
+use shared_structures::{Broadcast, Message, Status, Topic};
 
-use crate::{broadcast::Broadcast, config::Config};
+use crate::config::Config;
 
 #[derive(Debug)]
 pub struct DistributionManager {
@@ -224,13 +224,32 @@ impl DistributionManager {
     }
 }
 
+pub fn broadcast_replicate_partition(
+    broker: &mut Broker,
+    replica: &mut Partition,
+) -> Result<(), String> {
+    Broadcast::to(
+        &mut broker.stream,
+        &Message::CreatePartition {
+            id: replica.id.clone(),
+            replica_id: replica.replica_id.clone(),
+            topic: replica.topic.lock().unwrap().clone(),
+        },
+    )?;
+    // After successful creation of the partition on the broker,
+    // we can set its status on the observer to Active.
+    replica.status = Status::Up;
+
+    Ok(())
+}
+
 fn replicate_pending_partitions_once(
     pending_replication_partitions: &mut Vec<(usize, Partition)>,
     new_broker: &mut Broker,
 ) -> Result<(), String> {
     for (replications_needed, partition) in pending_replication_partitions.iter_mut().rev() {
         let mut replica = Partition::replicate(&partition, partition.replica_count + 1);
-        Broadcast::replicate_partition(new_broker, &mut replica)?;
+        broadcast_replicate_partition(new_broker, &mut replica)?;
         new_broker.partitions.push(replica);
         partition.replica_count += 1;
         *replications_needed -= 1;
@@ -263,7 +282,7 @@ fn replicate_partition(
     partition: &Partition,
 ) -> Result<(), String> {
     // Here we create a variable containing the total available brokers in the cluster to check whether it is less
-    // then replication factor, if so we certain either way to we will replicate to all partitions
+    // then replication factor, if so we certain either way that we will be able to replicate to all partitions
     let total_available_brokers = brokers_lock
         .iter()
         .filter(|b| b.status == Status::Up)
@@ -283,7 +302,7 @@ fn replicate_partition(
     for replica_count in 1..=current_max_replications {
         let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition)?;
         let mut replica = Partition::replicate(partition, replica_count);
-        Broadcast::replicate_partition(least_distributed_broker, &mut replica)?;
+        broadcast_replicate_partition(least_distributed_broker, &mut replica)?;
         least_distributed_broker.partitions.push(replica);
     }
 

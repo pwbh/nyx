@@ -30,7 +30,11 @@ impl<'a> MessageHandler<'a> {
                 replica_id,
                 topic,
             } => self.handle_create_partition(id, replica_id, topic),
-            _ => return Err("Couldn't decode the message".to_string()),
+            Message::ProducerWantsToConnect => {
+                println!("Producer connected.");
+                Ok(())
+            }
+            _ => Err("Couldn't decode the message".to_string()),
         }
     }
 

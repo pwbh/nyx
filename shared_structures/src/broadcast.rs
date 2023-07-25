@@ -1,8 +1,6 @@
 use std::{io::Write, net::TcpStream};
 
-use shared_structures::{Message, Status};
-
-use crate::distribution_manager::{Broker, Partition};
+use crate::Message;
 
 pub struct Broadcast;
 
@@ -27,8 +25,8 @@ impl Broadcast {
         Ok(())
     }
 
-    pub fn to(stream: &mut TcpStream, message: Message) -> Result<(), String> {
-        let mut payload = serde_json::to_string(&message)
+    pub fn to(stream: &mut TcpStream, message: &Message) -> Result<(), String> {
+        let mut payload = serde_json::to_string(message)
             .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
 
         payload.push('\n');
@@ -45,35 +43,13 @@ impl Broadcast {
 
         Ok(())
     }
-
-    // This will broadcast to every broker the necessary command for the broker to execute the necessary command
-    // here its Message::CreatePartition, with the relevant data
-    pub fn replicate_partition(broker: &mut Broker, replica: &mut Partition) -> Result<(), String> {
-        Self::to(
-            &mut broker.stream,
-            Message::CreatePartition {
-                id: replica.id.clone(),
-                replica_id: replica.replica_id.clone(),
-                topic: replica.topic.lock().unwrap().clone(),
-            },
-        )?;
-        // After successful creation of the partition on the broker,
-        // we can set its status on the observer to Active.
-        replica.status = Status::Up;
-
-        Ok(())
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        io::Read,
-        net::TcpListener,
-        sync::{Arc, Mutex},
-    };
+    use std::{io::Read, net::TcpListener};
 
-    use shared_structures::Topic;
+    use crate::Topic;
 
     use super::*;
 

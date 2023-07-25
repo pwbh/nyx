@@ -1,5 +1,7 @@
+mod broadcast;
 mod topic;
 
+pub use broadcast::Broadcast;
 pub use topic::Topic;
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -31,4 +33,5 @@ pub enum Message {
         id: String,
         random_hash: String,
     },
+    ProducerWantsToConnect,
 }
