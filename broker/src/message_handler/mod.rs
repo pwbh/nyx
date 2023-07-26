@@ -36,7 +36,7 @@ impl<'a> MessageHandler<'a> {
                 Ok(())
             }
             Message::ClusterMetadata { metadata } => {
-                println!("New metadata received from the cluster: {:?}", metadata);
+                println!("New metadata received from the cluster: {:#?}", metadata);
                 self.broker.cluster_metadata = metadata.clone();
                 Ok(())
             }

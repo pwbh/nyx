@@ -11,6 +11,9 @@ pub enum Status {
     Created,
     Down,
     Up,
+    // For replicas that are replicating data from the leader so that they
+    // won't be touched by consumers yet until they are Up.
+    Booting,
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]

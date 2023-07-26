@@ -5,7 +5,7 @@ use crate::Message;
 pub struct Broadcast;
 
 impl Broadcast {
-    pub fn all(streams: &mut [TcpStream], message: &Message) -> Result<(), String> {
+    pub fn all(streams: &mut [&mut TcpStream], message: &Message) -> Result<(), String> {
         let mut payload = serde_json::to_string(message)
             .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
 
@@ -64,18 +64,18 @@ mod tests {
 
         let thread3 = std::thread::spawn(|| TcpStream::connect("localhost:15000").unwrap());
 
-        let (server_to_client_stream_one, _) = listener.accept().unwrap();
-        let (server_to_client_stream_two, _) = listener.accept().unwrap();
-        let (server_to_client_stream_three, _) = listener.accept().unwrap();
+        let (mut server_to_client_stream_one, _) = listener.accept().unwrap();
+        let (mut server_to_client_stream_two, _) = listener.accept().unwrap();
+        let (mut server_to_client_stream_three, _) = listener.accept().unwrap();
 
         let mut client_to_server_stream_one = thread1.join().unwrap();
         let mut client_to_server_stream_two = thread2.join().unwrap();
         let mut client_to_server_stream_three = thread3.join().unwrap();
 
         let mut streams = [
-            server_to_client_stream_one,
-            server_to_client_stream_two,
-            server_to_client_stream_three,
+            &mut server_to_client_stream_one,
+            &mut server_to_client_stream_two,
+            &mut server_to_client_stream_three,
         ];
 
         let test_message = Message::CreatePartition {

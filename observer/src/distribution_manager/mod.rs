@@ -42,7 +42,6 @@ impl DistributionManager {
     pub fn connect_broker(&mut self, stream: TcpStream) -> Result<String, String> {
         // Handshake process between the Broker and Observer happening in get_broker_metadata
         let (id, addr, stream) = self.get_broker_metadata(stream)?;
-        let mut send_stream = stream.try_clone().map_err(|e| e.to_string())?;
         let mut brokers_lock = self.brokers.lock().unwrap();
         let broker_id =
             if let Some(disconnected_broker) = brokers_lock.iter_mut().find(|b| b.id == id) {
@@ -64,35 +63,37 @@ impl DistributionManager {
 
         drop(brokers_lock);
 
-        self.send_cluster_metadata(&mut send_stream)?;
+        self.send_cluster_metadata()?;
 
         Ok(broker_id)
     }
 
-    fn send_cluster_metadata(&self, stream: &mut TcpStream) -> Result<(), String> {
-        let brokers_lock = self.brokers.lock().unwrap();
+    fn send_cluster_metadata(&self) -> Result<(), String> {
+        let mut brokers_lock = self.brokers.lock().unwrap();
 
-        Broadcast::to(
-            stream,
+        let brokers: Vec<BrokerDetails> = brokers_lock
+            .iter()
+            .map(|b| BrokerDetails {
+                addr: b.addr.clone(),
+                status: b.status,
+                partitions: b
+                    .partitions
+                    .iter()
+                    .map(|p| PartitionDetails {
+                        id: p.id.clone(),
+                        replica_id: p.replica_id.to_string(),
+                        role: p.role,
+                    })
+                    .collect(),
+            })
+            .collect();
+
+        let mut streams: Vec<_> = brokers_lock.iter_mut().map(|b| &mut b.stream).collect();
+
+        Broadcast::all(
+            &mut streams[..],
             &shared_structures::Message::ClusterMetadata {
-                metadata: Metadata {
-                    brokers: brokers_lock
-                        .iter()
-                        .map(|b| BrokerDetails {
-                            addr: b.addr.clone(),
-                            status: b.status,
-                            partitions: b
-                                .partitions
-                                .iter()
-                                .map(|p| PartitionDetails {
-                                    id: p.id.clone(),
-                                    replica_id: p.replica_id.to_string(),
-                                    role: p.role,
-                                })
-                                .collect(),
-                        })
-                        .collect(),
-                },
+                metadata: Metadata { brokers },
             },
         )?;
 
@@ -162,6 +163,8 @@ impl DistributionManager {
                 replica_factor as usize,
                 &partition,
             )?;
+
+            self.send_cluster_metadata()?;
 
             return Ok(partition.id.clone());
 
