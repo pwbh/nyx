@@ -61,17 +61,13 @@ impl DistributionManager {
                 broker_id
             };
 
-        drop(brokers_lock);
-
-        self.send_cluster_metadata()?;
+        self.send_cluster_metadata(&mut brokers_lock)?;
 
         Ok(broker_id)
     }
 
-    fn send_cluster_metadata(&self) -> Result<(), String> {
-        let mut brokers_lock = self.brokers.lock().unwrap();
-
-        let brokers: Vec<BrokerDetails> = brokers_lock
+    fn send_cluster_metadata(&self, brokers: &mut Vec<Broker>) -> Result<(), String> {
+        let metadata_brokers: Vec<BrokerDetails> = brokers
             .iter()
             .map(|b| BrokerDetails {
                 addr: b.addr.clone(),
@@ -88,12 +84,14 @@ impl DistributionManager {
             })
             .collect();
 
-        let mut streams: Vec<_> = brokers_lock.iter_mut().map(|b| &mut b.stream).collect();
+        let mut streams: Vec<_> = brokers.iter_mut().map(|b| &mut b.stream).collect();
 
         Broadcast::all(
             &mut streams[..],
             &shared_structures::Message::ClusterMetadata {
-                metadata: Metadata { brokers },
+                metadata: Metadata {
+                    brokers: metadata_brokers,
+                },
             },
         )?;
 
@@ -164,7 +162,7 @@ impl DistributionManager {
                 &partition,
             )?;
 
-            self.send_cluster_metadata()?;
+            self.send_cluster_metadata(&mut brokers_lock)?;
 
             return Ok(partition.id.clone());
 
@@ -557,17 +555,21 @@ mod tests {
             .create_topic(notifications_topic)
             .unwrap();
 
+        // First partition for topic 'notifications'
         let partition_id_1 = distribution_manager_lock
             .create_partition(notifications_topic)
             .unwrap();
+
         let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
         let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_1);
         assert_eq!(total_brokers_with_replicas, replica_factor as usize);
         drop(brokers_lock);
 
+        // Second partition for topic 'notifications'
         let partition_id_2 = distribution_manager_lock
             .create_partition(notifications_topic)
             .unwrap();
+
         let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
         let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_2);
         assert_eq!(total_brokers_with_replicas, replica_factor as usize);
@@ -584,6 +586,7 @@ mod tests {
         let partition_id_3 = distribution_manager_lock
             .create_partition(comments_topic)
             .unwrap();
+
         let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
         let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_3);
         assert_eq!(total_brokers_with_replicas, replica_factor as usize);
@@ -593,6 +596,7 @@ mod tests {
         let partition_id_4 = distribution_manager_lock
             .create_partition(comments_topic)
             .unwrap();
+
         let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
         let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_4);
         assert_eq!(total_brokers_with_replicas, replica_factor as usize);
@@ -609,6 +613,7 @@ mod tests {
         let partition_id_5 = distribution_manager_lock
             .create_partition("friend_requests")
             .unwrap();
+
         let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
         let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_5);
         assert_eq!(total_brokers_with_replicas, replica_factor as usize);
