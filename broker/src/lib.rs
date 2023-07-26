@@ -1,4 +1,10 @@
-use std::{fs, io::Write, net::TcpStream, path::PathBuf};
+use std::{
+    fs,
+    io::Write,
+    net::TcpStream,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use shared_structures::{Broadcast, Message, Metadata};
 use uuid::Uuid;
@@ -21,14 +27,18 @@ pub struct Broker {
     pub cluster_metadata: Metadata,
     pub stream: TcpStream,
     custom_dir: Option<PathBuf>,
+    pub connected_producers: Arc<Mutex<Vec<TcpStream>>>,
+    pub addr: String,
 }
 
 impl Broker {
     /// Broker will automatically initiate a handshake with the Observer
-    pub fn new(stream: TcpStream, name: Option<&String>) -> Result<Self, String> {
+    pub fn new(stream: TcpStream, addr: String, name: Option<&String>) -> Result<Self, String> {
         let custom_dir: Option<PathBuf> = name.map(|f| f.into());
 
         let cluster_metadata = Metadata { brokers: vec![] };
+
+        let connected_producers = Arc::new(Mutex::new(vec![]));
 
         let mut broker = match try_get_local_metadata(custom_dir.as_ref()) {
             Ok(local_metadata) => Self {
@@ -36,6 +46,8 @@ impl Broker {
                 local_metadata,
                 custom_dir,
                 cluster_metadata,
+                connected_producers,
+                addr,
             },
             Err(_e) => {
                 let id = Uuid::new_v4().to_string();
@@ -50,6 +62,8 @@ impl Broker {
                     stream,
                     custom_dir,
                     cluster_metadata,
+                    connected_producers,
+                    addr,
                 };
 
                 broker.save_metadata_file()?;
@@ -68,6 +82,7 @@ impl Broker {
             &mut self.stream,
             &Message::BrokerWantsToConnect {
                 id: self.local_metadata.id.clone(),
+                addr: self.addr.clone(),
             },
         )
     }

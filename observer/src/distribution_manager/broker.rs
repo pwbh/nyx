@@ -11,10 +11,11 @@ pub struct Broker {
     pub partitions: Vec<Partition>,
     pub reader: BufReader<TcpStream>,
     pub status: Status,
+    pub addr: String,
 }
 
 impl Broker {
-    pub fn from(id: String, stream: TcpStream) -> Result<Self, String> {
+    pub fn from(id: String, stream: TcpStream, addr: String) -> Result<Self, String> {
         let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
         let reader = BufReader::new(read_stream);
 
@@ -24,16 +25,18 @@ impl Broker {
             stream,
             reader,
             status: Status::Up,
+            addr,
         })
     }
 
-    pub fn restore(&mut self, stream: TcpStream) -> Result<(), String> {
+    pub fn restore(&mut self, stream: TcpStream, addr: String) -> Result<(), String> {
         let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
         let reader = BufReader::new(read_stream);
 
         self.status = Status::Up;
         self.stream = stream;
         self.reader = reader;
+        self.addr = addr;
 
         for partition in self.partitions.iter_mut() {
             partition.status = Status::Up

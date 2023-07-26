@@ -35,6 +35,7 @@ pub enum Message {
     DenyLeadership,
     BrokerWantsToConnect {
         id: String,
+        addr: String,
     },
     ProducerWantsToConnect {
         topic: String,
@@ -43,4 +44,13 @@ pub enum Message {
     ClusterMetadata {
         metadata: Metadata,
     },
+}
+
+pub fn println_c(text: &str, color: usize) {
+    if color > 255 {
+        panic!("Color is out of range 0 to 255");
+    }
+
+    let t = format!("\x1b[38;5;{}m{}\x1b[0m", color, text);
+    println!("{}", t)
 }

@@ -7,6 +7,7 @@ use std::{
 
 use broker::{Broker, MessageHandler};
 use clap::{arg, command};
+use shared_structures::println_c;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let matches = command!()
@@ -53,9 +54,34 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let stream: TcpStream = tcp_stream.ok_or("Stream is wrong")?;
 
-    let listener = TcpListener::bind("localhost:0");
+    // Port 0 means that we let the system find a free port in itself and use that
+    let listener = TcpListener::bind("localhost:0").map_err(|e| e.to_string())?;
 
-    let mut broker = Broker::new(stream, name)?;
+    let host = listener.local_addr().unwrap();
+
+    let mut broker = Broker::new(stream, host.to_string(), name)?;
+
+    println_c(
+        &format!(
+            "Broker is ready to accept producers on port {}",
+            listener.local_addr().unwrap().port()
+        ),
+        50,
+    );
+
+    let connected_producers = broker.connected_producers.clone();
+
+    // Producers listener
+    std::thread::spawn(move || loop {
+        let connection = listener.incoming().next();
+
+        if let Some(stream) = connection {
+            match stream {
+                Ok(stream) => connected_producers.lock().unwrap().push(stream),
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+    });
 
     println_c("Initialization complete.", 35);
 
@@ -63,7 +89,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let mut message_handler = MessageHandler::from(&mut broker)?;
 
-    let mut reader = BufReader::new(reader_stream);
+    let mut reader: BufReader<TcpStream> = BufReader::new(reader_stream);
 
     let mut buf = String::with_capacity(1024);
 
@@ -82,13 +108,4 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     Ok(())
-}
-
-fn println_c(text: &str, color: usize) {
-    if color > 255 {
-        panic!("Color is out of range 0 to 255");
-    }
-
-    let t = format!("\x1b[38;5;{}m{}\x1b[0m", color, text);
-    println!("{}", t)
 }

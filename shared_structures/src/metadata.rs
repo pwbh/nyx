@@ -8,7 +8,7 @@ pub struct PartitionDetails {
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct BrokerDetails {
-    pub host: String,
+    pub addr: String,
     pub status: Status,
     pub partitions: Vec<PartitionDetails>,
 }

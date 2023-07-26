@@ -41,16 +41,16 @@ impl DistributionManager {
     // or any other reason. Observer should try and sync with the brokers via the brokers provided id.
     pub fn connect_broker(&mut self, stream: TcpStream) -> Result<String, String> {
         // Handshake process between the Broker and Observer happening in get_broker_metadata
-        let (id, stream) = self.get_broker_metadata(stream)?;
+        let (id, addr, stream) = self.get_broker_metadata(stream)?;
         let mut send_stream = stream.try_clone().map_err(|e| e.to_string())?;
         let mut brokers_lock = self.brokers.lock().unwrap();
         let broker_id =
             if let Some(disconnected_broker) = brokers_lock.iter_mut().find(|b| b.id == id) {
-                disconnected_broker.restore(stream)?;
+                disconnected_broker.restore(stream, addr)?;
                 self.spawn_broker_reader(&disconnected_broker)?;
                 disconnected_broker.id.clone()
             } else {
-                let mut broker = Broker::from(id, stream)?;
+                let mut broker = Broker::from(id, stream, addr)?;
                 self.spawn_broker_reader(&broker)?;
                 let broker_id = broker.id.clone();
                 // Need to replicate the pending partitions if there is any
@@ -79,7 +79,7 @@ impl DistributionManager {
                     brokers: brokers_lock
                         .iter()
                         .map(|b| BrokerDetails {
-                            host: "sdsd".to_string(),
+                            addr: b.addr.clone(),
                             status: b.status,
                             partitions: b
                                 .partitions
@@ -171,7 +171,10 @@ impl DistributionManager {
         }
     }
 
-    fn get_broker_metadata(&self, stream: TcpStream) -> Result<(String, TcpStream), String> {
+    fn get_broker_metadata(
+        &self,
+        stream: TcpStream,
+    ) -> Result<(String, String, TcpStream), String> {
         let mut buf = String::with_capacity(1024);
 
         let mut reader = BufReader::new(&stream);
@@ -191,8 +194,8 @@ impl DistributionManager {
             }
         };
 
-        if let Message::BrokerWantsToConnect { id } = message {
-            Ok((id, stream))
+        if let Message::BrokerWantsToConnect { id, addr } = message {
+            Ok((id, addr, stream))
         } else {
             Err("Handshake with client failed, wrong message received from client.".to_string())
         }
@@ -389,6 +392,7 @@ mod tests {
         let mut mock_stream = TcpStream::connect(addr).unwrap();
         let mut payload = serde_json::to_string(&Message::BrokerWantsToConnect {
             id: uuid::Uuid::new_v4().to_string(),
+            addr: "localhost:123123".to_string(),
         })
         .unwrap();
 

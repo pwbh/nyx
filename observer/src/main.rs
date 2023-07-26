@@ -1,6 +1,6 @@
 use clap::{arg, command};
 use observer::{distribution_manager::DistributionManager, Observer, DEV_CONFIG, PROD_CONFIG};
-use shared_structures::Role;
+use shared_structures::{println_c, Role};
 use std::{
     net::TcpStream,
     sync::{Arc, Mutex, MutexGuard},
@@ -32,19 +32,21 @@ fn main() -> Result<(), String> {
 
     let mut observer = Observer::new(config_path, role)?;
 
-    // Open a TCP stream for brokers to connect to
-
-    println!(
-        "Observer is ready to accept brokers on port {}",
-        observer.listener.local_addr().unwrap().port()
+    println_c(
+        &format!(
+            "Observer is ready to accept brokers on port {}",
+            observer.listener.local_addr().unwrap().port()
+        ),
+        35,
     );
 
     let mut streams_distribution_manager = observer.distribution_manager.clone();
 
+    // Brokers listener
     std::thread::spawn(move || loop {
-        let stream = observer.listener.incoming().next();
+        let connection = observer.listener.incoming().next();
 
-        if let Some(stream) = stream {
+        if let Some(stream) = connection {
             match stream {
                 Ok(stream) => {
                     match handle_connect_broker(&mut streams_distribution_manager, stream) {
