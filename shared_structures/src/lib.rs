@@ -35,6 +35,7 @@ pub enum Message {
         partition_id: String,
         replica_id: String,
     },
+    // Should deny leadership request with the addr of broker where leader resides.
     DenyLeadership,
     BrokerWantsToConnect {
         id: String,
