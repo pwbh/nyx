@@ -46,11 +46,12 @@ fn main() -> Result<(), String> {
 
         if let Some(stream) = stream {
             match stream {
-                Ok(stream) => match handle_create_broker(&mut streams_distribution_manager, stream)
-                {
-                    Ok(broker_id) => println!("Broker {} has connected.", broker_id),
-                    Err(e) => println!("Error: {}", e),
-                },
+                Ok(stream) => {
+                    match handle_connect_broker(&mut streams_distribution_manager, stream) {
+                        Ok(broker_id) => println!("Broker {} has connected.", broker_id),
+                        Err(e) => println!("Error: {}", e),
+                    }
+                }
                 Err(e) => println!("Failed to establish connection: {}", e),
             }
         }
@@ -98,10 +99,12 @@ fn handle_list_command(
     let level = command.arguments.first().unwrap();
 
     if level == "ALL" {
-        //    println!("{:#?}", distribution_manager_lock.brokers);
         print_list_all(&distribution_manager_lock);
     } else {
-        return Err("Such depth is not supported".to_string());
+        return Err(format!(
+            "Requested listing depth `{}` is not supported",
+            level
+        ));
     }
 
     Ok(())
@@ -135,12 +138,12 @@ fn handle_create_command(
     }
 }
 
-fn handle_create_broker(
+fn handle_connect_broker(
     distribution_manager: &mut Arc<Mutex<DistributionManager>>,
     stream: TcpStream,
 ) -> Result<String, String> {
     let mut distribution_manager_lock = distribution_manager.lock().unwrap();
-    distribution_manager_lock.create_broker(stream)
+    distribution_manager_lock.connect_broker(stream)
 }
 
 fn handle_create_topic(

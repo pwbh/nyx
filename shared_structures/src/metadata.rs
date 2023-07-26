@@ -1,18 +1,19 @@
-use crate::Role;
+use crate::{Role, Status};
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct Partition {
-    id: String,
-    replica_id: String,
-    role: Role,
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct PartitionDetails {
+    pub id: String,
+    pub replica_id: String,
+    pub role: Role,
 }
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct Broker {
-    host: String,
-    partitions: Vec<Partition>,
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct BrokerDetails {
+    pub host: String,
+    pub status: Status,
+    pub partitions: Vec<PartitionDetails>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Metadata {
-    brokers: Vec<Broker>,
+    pub brokers: Vec<BrokerDetails>,
 }

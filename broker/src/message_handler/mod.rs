@@ -35,7 +35,15 @@ impl<'a> MessageHandler<'a> {
                 // TODO: Should send back data with the locations (hosts) that hold the partition for given topic.
                 Ok(())
             }
-            _ => Err("Couldn't decode the message".to_string()),
+            Message::ClusterMetadata { metadata } => {
+                println!("New metadata received from the cluster: {:?}", metadata);
+                self.broker.cluster_metadata = metadata.clone();
+                Ok(())
+            }
+            _ => Err(format!(
+                "Message {:?} is not handled in `handle_by_message`.",
+                message
+            )),
         }
     }
 

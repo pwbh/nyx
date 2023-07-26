@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     io::{BufRead, BufReader},
-    net::TcpStream,
+    net::{TcpListener, TcpStream},
     time::Duration,
 };
 
@@ -52,6 +52,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let stream: TcpStream = tcp_stream.ok_or("Stream is wrong")?;
+
+    let listener = TcpListener::bind("localhost:0");
 
     let mut broker = Broker::new(stream, name)?;
 

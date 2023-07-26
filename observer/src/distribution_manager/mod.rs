@@ -10,7 +10,10 @@ mod partition;
 
 pub use broker::Broker;
 pub use partition::Partition;
-use shared_structures::{Broadcast, Message, Status, Topic};
+use shared_structures::{
+    metadata::{BrokerDetails, PartitionDetails},
+    Broadcast, Message, Metadata, Status, Topic,
+};
 
 use crate::config::Config;
 
@@ -36,26 +39,64 @@ impl DistributionManager {
     // TODO: Should check whether a broker that is being added already exists in the system + if it's Status is `Down`
     // meaning that this broker has disconnected in one of many possible ways, including user interference, unexpected system crush
     // or any other reason. Observer should try and sync with the brokers via the brokers provided id.
-    pub fn create_broker(&mut self, stream: TcpStream) -> Result<String, String> {
+    pub fn connect_broker(&mut self, stream: TcpStream) -> Result<String, String> {
         // Handshake process between the Broker and Observer happening in get_broker_metadata
         let (id, stream) = self.get_broker_metadata(stream)?;
+        let mut send_stream = stream.try_clone().map_err(|e| e.to_string())?;
         let mut brokers_lock = self.brokers.lock().unwrap();
-        if let Some(disconnected_broker) = brokers_lock.iter_mut().find(|b| b.id == id) {
-            disconnected_broker.restore(stream)?;
-            self.spawn_broker_reader(&disconnected_broker)?;
-            Ok(disconnected_broker.id.clone())
-        } else {
-            let mut broker = Broker::from(id, stream)?;
-            self.spawn_broker_reader(&broker)?;
-            let broker_id = broker.id.clone();
-            // Need to replicate the pending partitions if there is any
-            replicate_pending_partitions_once(
-                &mut self.pending_replication_partitions,
-                &mut broker,
-            )?;
-            brokers_lock.push(broker);
-            Ok(broker_id)
-        }
+        let broker_id =
+            if let Some(disconnected_broker) = brokers_lock.iter_mut().find(|b| b.id == id) {
+                disconnected_broker.restore(stream)?;
+                self.spawn_broker_reader(&disconnected_broker)?;
+                disconnected_broker.id.clone()
+            } else {
+                let mut broker = Broker::from(id, stream)?;
+                self.spawn_broker_reader(&broker)?;
+                let broker_id = broker.id.clone();
+                // Need to replicate the pending partitions if there is any
+                replicate_pending_partitions_once(
+                    &mut self.pending_replication_partitions,
+                    &mut broker,
+                )?;
+                brokers_lock.push(broker);
+                broker_id
+            };
+
+        drop(brokers_lock);
+
+        self.send_cluster_metadata(&mut send_stream)?;
+
+        Ok(broker_id)
+    }
+
+    fn send_cluster_metadata(&self, stream: &mut TcpStream) -> Result<(), String> {
+        let brokers_lock = self.brokers.lock().unwrap();
+
+        Broadcast::to(
+            stream,
+            &shared_structures::Message::ClusterMetadata {
+                metadata: Metadata {
+                    brokers: brokers_lock
+                        .iter()
+                        .map(|b| BrokerDetails {
+                            host: "sdsd".to_string(),
+                            status: b.status,
+                            partitions: b
+                                .partitions
+                                .iter()
+                                .map(|p| PartitionDetails {
+                                    id: p.id.clone(),
+                                    replica_id: p.replica_id.to_string(),
+                                    role: p.role,
+                                })
+                                .collect(),
+                        })
+                        .collect(),
+                },
+            },
+        )?;
+
+        Ok(())
     }
 
     // Will return the name of created topic on success
@@ -390,7 +431,7 @@ mod tests {
         // Simulate acceptence of brokers
         for _ in 0..3 {
             let stream = listener.incoming().next().unwrap().unwrap();
-            distribution_manager_lock.create_broker(stream).unwrap();
+            distribution_manager_lock.connect_broker(stream).unwrap();
         }
 
         drop(distribution_manager_lock);
@@ -418,7 +459,7 @@ mod tests {
 
         let stream = spawned_thread.join().unwrap();
 
-        let result = distribution_manager_lock.create_broker(stream);
+        let result = distribution_manager_lock.connect_broker(stream);
 
         println!("{:?}", result);
 

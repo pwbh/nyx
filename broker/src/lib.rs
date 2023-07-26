@@ -1,6 +1,6 @@
 use std::{fs, io::Write, net::TcpStream, path::PathBuf};
 
-use shared_structures::{Broadcast, Message};
+use shared_structures::{Broadcast, Message, Metadata};
 use uuid::Uuid;
 
 mod message_handler;
@@ -10,14 +10,15 @@ pub use message_handler::MessageHandler;
 pub use partition::Partition;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct Metadata {
+pub struct LocalMetadata {
     id: String,
     partitions: Vec<Partition>,
 }
 
 #[derive(Debug)]
 pub struct Broker {
-    pub metadata: Metadata,
+    pub local_metadata: LocalMetadata,
+    pub cluster_metadata: Metadata,
     pub stream: TcpStream,
     custom_dir: Option<PathBuf>,
 }
@@ -27,24 +28,28 @@ impl Broker {
     pub fn new(stream: TcpStream, name: Option<&String>) -> Result<Self, String> {
         let custom_dir: Option<PathBuf> = name.map(|f| f.into());
 
-        let mut broker = match try_get_metadata(custom_dir.as_ref()) {
-            Ok(metadata) => Self {
+        let cluster_metadata = Metadata { brokers: vec![] };
+
+        let mut broker = match try_get_local_metadata(custom_dir.as_ref()) {
+            Ok(local_metadata) => Self {
                 stream,
-                metadata,
+                local_metadata,
                 custom_dir,
+                cluster_metadata,
             },
             Err(_e) => {
                 let id = Uuid::new_v4().to_string();
 
-                let metadata = Metadata {
+                let local_metadata = LocalMetadata {
                     id,
                     partitions: vec![],
                 };
 
                 let broker = Self {
-                    metadata,
+                    local_metadata,
                     stream,
                     custom_dir,
+                    cluster_metadata,
                 };
 
                 broker.save_metadata_file()?;
@@ -62,22 +67,25 @@ impl Broker {
         Broadcast::to(
             &mut self.stream,
             &Message::BrokerWantsToConnect {
-                id: self.metadata.id.clone(),
+                id: self.local_metadata.id.clone(),
             },
         )
     }
 
     fn save_metadata_file(&self) -> Result<(), String> {
-        save_metadata_file(&self.metadata, self.custom_dir.as_ref())
+        save_metadata_file(&self.local_metadata, self.custom_dir.as_ref())
     }
 
     fn create_partition(&mut self, partition: Partition) -> Result<(), String> {
-        self.metadata.partitions.push(partition);
+        self.local_metadata.partitions.push(partition);
         self.save_metadata_file()
     }
 }
 
-fn save_metadata_file(metadata: &Metadata, custom_dir: Option<&PathBuf>) -> Result<(), String> {
+fn save_metadata_file(
+    metadata: &LocalMetadata,
+    custom_dir: Option<&PathBuf>,
+) -> Result<(), String> {
     let nyx_dir = get_metadata_directory(custom_dir)?;
     let filepath = get_metadata_filepath(custom_dir)?;
     fs::create_dir_all(nyx_dir).map_err(|e| e.to_string())?;
@@ -87,10 +95,10 @@ fn save_metadata_file(metadata: &Metadata, custom_dir: Option<&PathBuf>) -> Resu
     Ok(())
 }
 
-fn try_get_metadata(custom_dir: Option<&PathBuf>) -> Result<Metadata, String> {
+fn try_get_local_metadata(custom_dir: Option<&PathBuf>) -> Result<LocalMetadata, String> {
     let filepath = get_metadata_filepath(custom_dir)?;
     let content = fs::read_to_string(filepath).map_err(|e| e.to_string())?;
-    serde_json::from_str::<Metadata>(&content).map_err(|e| e.to_string())
+    serde_json::from_str::<LocalMetadata>(&content).map_err(|e| e.to_string())
 }
 
 fn get_metadata_filepath(custom_dir: Option<&PathBuf>) -> Result<PathBuf, String> {
@@ -134,9 +142,9 @@ fn get_metadata_directory(custom_dir: Option<&PathBuf>) -> Result<PathBuf, Strin
 mod tests {
     use super::*;
 
-    fn setup_nyx_dir_with_metadata(custom_dir: &PathBuf) {
+    fn setup_nyx_dir_with_local_metadata(custom_dir: &PathBuf) {
         save_metadata_file(
-            &Metadata {
+            &LocalMetadata {
                 id: "some_mocked_id".to_string(),
                 partitions: vec![],
             },
@@ -152,24 +160,24 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn get_metadata_directory_returns_dir_as_expected() {
+    fn get_local_metadata_directory_returns_dir_as_expected() {
         let dir = get_metadata_directory(None).unwrap();
         assert!(dir.to_str().unwrap().contains("nyx"));
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn get_metadata_filepath_returns_filepath_as_expected() {
+    fn get_local_metadata_filepath_returns_filepath_as_expected() {
         let filepath = get_metadata_filepath(None).unwrap();
         assert!(filepath.to_str().unwrap().contains("nyx/metadata.json"));
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn save_metadata_file_saves_file_to_designated_location() {
+    fn save_local_metadata_file_saves_file_to_designated_location() {
         let custom_dir: PathBuf = "save_metadata_file_saves_file_to_designated_location".into();
         save_metadata_file(
-            &Metadata {
+            &LocalMetadata {
                 id: "broker_metadata_id".to_string(),
                 partitions: vec![],
             },
@@ -184,10 +192,10 @@ mod tests {
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn tries_to_get_metadata_succeeds() {
+    fn tries_to_get_local_metadata_succeeds() {
         let custom_dir: PathBuf = "tries_to_get_metadata_succeeds".into();
-        setup_nyx_dir_with_metadata(&custom_dir);
-        let result = try_get_metadata(Some(&custom_dir));
+        setup_nyx_dir_with_local_metadata(&custom_dir);
+        let result = try_get_local_metadata(Some(&custom_dir));
         assert!(result.is_ok());
         cleanup_nyx_storage(&custom_dir);
     }

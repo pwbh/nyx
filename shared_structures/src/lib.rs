@@ -1,5 +1,5 @@
 mod broadcast;
-mod metadata;
+pub mod metadata;
 mod topic;
 
 pub use broadcast::Broadcast;
