@@ -1,8 +1,10 @@
 mod broadcast;
+mod file_manager;
 pub mod metadata;
 mod topic;
 
 pub use broadcast::Broadcast;
+pub use file_manager::FileManager;
 pub use metadata::Metadata;
 pub use topic::Topic;
 
