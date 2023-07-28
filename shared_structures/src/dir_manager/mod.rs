@@ -5,17 +5,20 @@ use std::{
     path::PathBuf,
 };
 
-pub struct FileManager<'a> {
-    custom_dir: Option<&'a PathBuf>,
+#[derive(Debug)]
+pub struct DirManager {
+    custom_dir: Option<PathBuf>,
 }
 
-impl<'a> FileManager<'a> {
+impl DirManager {
     pub fn new() -> Self {
         Self { custom_dir: None }
     }
 
-    pub fn with_dir(custom_dir: Option<&'a PathBuf>) -> Self {
-        Self { custom_dir }
+    pub fn with_dir(custom_dir: Option<&PathBuf>) -> Self {
+        Self {
+            custom_dir: custom_dir.map(|c| c.clone()),
+        }
     }
 
     pub fn save<'de, T: serde::Serialize + serde::Deserialize<'de>>(
@@ -23,8 +26,8 @@ impl<'a> FileManager<'a> {
         path: &str,
         content: &T,
     ) -> Result<(), String> {
-        let nyx_dir = Self::get_base_dir(self.custom_dir)?;
-        let filepath = Self::get_filepath(path, self.custom_dir)?;
+        let nyx_dir = Self::get_base_dir(self.custom_dir.as_ref())?;
+        let filepath = Self::get_filepath(path, self.custom_dir.as_ref())?;
         fs::create_dir_all(nyx_dir).map_err(|e| e.to_string())?;
         let mut file = std::fs::File::create(filepath).map_err(|e| e.to_string())?;
         let payload = serde_json::to_string(content).map_err(|e| e.to_string())?;
@@ -36,7 +39,7 @@ impl<'a> FileManager<'a> {
         &self,
         path: &str,
     ) -> Result<T, String> {
-        let filepath = Self::get_filepath(path, self.custom_dir)?;
+        let filepath = Self::get_filepath(path, self.custom_dir.as_ref())?;
         let content = fs::read_to_string(filepath).map_err(|e| e.to_string())?;
         let data = serde_json::from_str::<T>(&content).map_err(|e| e.to_string())?;
         Ok(data)
@@ -90,8 +93,8 @@ mod tests {
         partitions: Vec<String>,
     }
 
-    fn setup_nyx_dir_with_local_metadata(custom_dir: &PathBuf) -> FileManager<'_> {
-        let file_manager = FileManager::with_dir(Some(custom_dir));
+    fn setup_nyx_dir_with_local_metadata(custom_dir: &PathBuf) -> DirManager {
+        let file_manager = DirManager::with_dir(Some(custom_dir));
 
         file_manager
             .save(
@@ -106,30 +109,30 @@ mod tests {
         file_manager
     }
 
-    fn cleanup_nyx_storage(custom_dir: &PathBuf) {
-        let nyx_dir = FileManager::get_base_dir(Some(custom_dir)).unwrap();
+    fn cleanup_nyx_dir(custom_dir: &PathBuf) {
+        let nyx_dir = DirManager::get_base_dir(Some(custom_dir)).unwrap();
         fs::remove_dir_all(nyx_dir).unwrap();
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn get_local_metadata_directory_returns_dir_as_expected() {
-        let dir = FileManager::get_base_dir(None).unwrap();
+        let dir = DirManager::get_base_dir(None).unwrap();
         assert!(dir.to_str().unwrap().contains("nyx"));
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn get_local_metadata_filepath_returns_filepath_as_expected() {
-        let filepath = FileManager::get_filepath("metadata.json", None).unwrap();
+        let filepath = DirManager::get_filepath("metadata.json", None).unwrap();
         assert!(filepath.to_str().unwrap().contains("nyx/metadata.json"));
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
-    fn save_local_metadata_file_saves_file_to_designated_location() {
-        let custom_dir: PathBuf = "save_metadata_file_saves_file_to_designated_location".into();
-        let file_manager = FileManager::with_dir(Some(&custom_dir));
+    fn save_local_metadata_file_saves_file_to_designated_dir() {
+        let custom_dir: PathBuf = "save_metadata_file_saves_file_to_designated_dir".into();
+        let file_manager = DirManager::with_dir(Some(&custom_dir));
         file_manager
             .save(
                 "metadata.json",
@@ -139,10 +142,10 @@ mod tests {
                 },
             )
             .unwrap();
-        let filepath = FileManager::get_filepath("metadata.json", Some(&custom_dir)).unwrap();
+        let filepath = DirManager::get_filepath("metadata.json", Some(&custom_dir)).unwrap();
         let file = fs::File::open(filepath);
         assert!(file.is_ok());
-        cleanup_nyx_storage(&custom_dir);
+        cleanup_nyx_dir(&custom_dir);
     }
 
     #[test]
@@ -152,6 +155,6 @@ mod tests {
         let file_manager = setup_nyx_dir_with_local_metadata(&custom_dir);
         let result = file_manager.open::<LocalMetadata>("metadata.json");
         assert!(result.is_ok());
-        cleanup_nyx_storage(&custom_dir);
+        cleanup_nyx_dir(&custom_dir);
     }
 }
