@@ -18,11 +18,9 @@ fn main() -> Result<(), String> {
 
     let leader = matches.get_one::<String>("follow");
 
-    let config_path = if let Some(user_custom_config_path) = matches.get_one::<String>("config") {
-        user_custom_config_path
-    } else {
-        &default_config_path_by_env
-    };
+    let config_path = matches
+        .get_one::<String>("config")
+        .unwrap_or_else(|| &default_config_path_by_env);
 
     let role = if leader.is_none() {
         Role::Leader
