@@ -19,13 +19,14 @@ pub struct LocalMetadata {
     partitions: Vec<Partition>,
 }
 
+const METADATA_FILE: &str = "metadata.json";
+
 #[derive(Debug)]
 pub struct Broker {
     pub local_metadata: LocalMetadata,
     pub dir_manager: DirManager,
     pub cluster_metadata: Metadata,
     pub stream: TcpStream,
-
     pub connected_producers: Arc<Mutex<Vec<TcpStream>>>,
     pub addr: String,
 }
@@ -41,7 +42,7 @@ impl Broker {
 
         let dir_manager = DirManager::with_dir(custom_dir.as_ref());
 
-        let mut broker = match dir_manager.open::<LocalMetadata>("metada.json") {
+        let mut broker = match dir_manager.open::<LocalMetadata>(METADATA_FILE) {
             Ok(local_metadata) => Self {
                 stream,
                 local_metadata,
@@ -58,7 +59,7 @@ impl Broker {
                     partitions: vec![],
                 };
 
-                dir_manager.save("metadata.json", &cluster_metadata)?;
+                dir_manager.save(METADATA_FILE, &local_metadata)?;
 
                 let broker = Self {
                     stream,
@@ -90,7 +91,7 @@ impl Broker {
 
     fn create_partition(&mut self, partition: Partition) -> Result<(), String> {
         self.local_metadata.partitions.push(partition);
-        self.dir_manager.save("metadata.json", &self.local_metadata)
+        self.dir_manager.save(METADATA_FILE, &self.local_metadata)
     }
 }
 
