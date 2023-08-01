@@ -11,14 +11,33 @@ pub struct DirManager {
 }
 
 impl DirManager {
+    /// Creates a directory manager in the predefined path of the root directory for Nyx.   
     pub fn new() -> Self {
         Self { custom_dir: None }
     }
 
+    /// Create a directory manager in the predefined path of the root directory
+    /// for Nyx at specified custom directory `custom_dir`, this manager can then perform
+    /// different fs actions such as opening a file in the directory, saving the file to the directory,
+    /// and creating empty files in the directory safely in the context
+    /// of the directory it was created in.
+    ///
+    /// when creating a DirManager by passing `custom_dir` the DirManager will still
+    /// work in the context of the Nyx foder.
     pub fn with_dir(custom_dir: Option<&PathBuf>) -> Self {
         Self {
             custom_dir: custom_dir.map(|c| c.clone()),
         }
+    }
+
+    pub fn create(&self, path: &str) -> Result<PathBuf, String> {
+        let nyx_dir = Self::get_base_dir(self.custom_dir.as_ref())?;
+        let nyx_dir_str = nyx_dir
+            .to_str()
+            .ok_or("Failed while validating UTF-8 path integrity.")?;
+        let total_path = format!("{}/{}", nyx_dir_str, path);
+        fs::create_dir_all(&total_path).map_err(|e| format!("DirManager: {}", e))?;
+        Ok(total_path.into())
     }
 
     pub fn save<'de, T: serde::Serialize + serde::Deserialize<'de>>(
@@ -27,8 +46,8 @@ impl DirManager {
         content: &T,
     ) -> Result<(), String> {
         let nyx_dir = Self::get_base_dir(self.custom_dir.as_ref())?;
-        let filepath = Self::get_filepath(path, self.custom_dir.as_ref())?;
         fs::create_dir_all(nyx_dir).map_err(|e| e.to_string())?;
+        let filepath = Self::get_filepath(path, self.custom_dir.as_ref())?;
         let mut file = std::fs::File::create(filepath).map_err(|e| e.to_string())?;
         let payload = serde_json::to_string(content).map_err(|e| e.to_string())?;
         file.write(payload.as_bytes()).map_err(|e| e.to_string())?;

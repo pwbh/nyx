@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use shared_structures::{Role, Status, Topic};
 
+mod partition_db;
 mod record;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -26,6 +27,8 @@ impl Partition {
         partition_number: usize,
         replica_number: usize,
     ) -> Result<Self, String> {
+        //let database = partition_db::
+
         Ok(Self {
             id,
             replica_id,
