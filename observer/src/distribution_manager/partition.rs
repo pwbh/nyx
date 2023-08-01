@@ -9,7 +9,7 @@ pub struct Partition {
     pub status: Status,
     pub topic: Arc<Mutex<Topic>>,
     pub role: Role,
-    partition_number: usize,
+    pub partition_number: usize,
     pub replica_count: usize,
 }
 

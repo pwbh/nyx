@@ -31,6 +31,8 @@ pub enum Message {
         id: String,
         replica_id: String,
         topic: Topic,
+        partition_number: usize,
+        replica_count: usize,
     },
     RequestLeadership {
         broker_id: String,

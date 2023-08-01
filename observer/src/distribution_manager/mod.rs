@@ -279,6 +279,8 @@ pub fn broadcast_replicate_partition(
             id: replica.id.clone(),
             replica_id: replica.replica_id.clone(),
             topic: replica.topic.lock().unwrap().clone(),
+            partition_number: replica.partition_number,
+            replica_count: replica.replica_count,
         },
     )?;
     // After successful creation of the partition on the broker,

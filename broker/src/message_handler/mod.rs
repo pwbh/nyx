@@ -29,7 +29,15 @@ impl<'a> MessageHandler<'a> {
                 id,
                 replica_id,
                 topic,
-            } => self.handle_create_partition(id, replica_id, topic),
+                replica_count,
+                partition_number,
+            } => self.handle_create_partition(
+                id,
+                replica_id,
+                topic,
+                *replica_count,
+                *partition_number,
+            ),
             Message::ProducerWantsToConnect { topic } => {
                 println!("Producer wants to connect to topic `{}`", topic);
                 // TODO: Should send back data with the locations (hosts) that hold the partition for given topic.
@@ -52,6 +60,8 @@ impl<'a> MessageHandler<'a> {
         id: &String,
         replica_id: &String,
         topic: &Topic,
+        replica_count: usize,
+        partition_number: usize,
     ) -> Result<(), String> {
         println!("{:?}", self.broker.custom_dir);
         let partition = Partition::from(
@@ -60,8 +70,8 @@ impl<'a> MessageHandler<'a> {
             Status::Up,
             topic.clone(),
             shared_structures::Role::Follower,
-            1,
-            1,
+            partition_number,
+            replica_count,
             self.broker.custom_dir.as_ref(),
         )?;
         self.broker.create_partition(partition)
