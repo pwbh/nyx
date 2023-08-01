@@ -53,6 +53,7 @@ impl<'a> MessageHandler<'a> {
         replica_id: &String,
         topic: &Topic,
     ) -> Result<(), String> {
+        println!("{:?}", self.broker.custom_dir);
         let partition = Partition::from(
             id.clone(),
             replica_id.clone(),

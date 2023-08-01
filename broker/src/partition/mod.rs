@@ -33,6 +33,8 @@ impl Partition {
     ) -> Result<Self, String> {
         let database = PartitionDB::with_dir(&replica_id, custom_dir)?;
 
+        println!("Database initialized");
+
         Ok(Self {
             id,
             replica_id,

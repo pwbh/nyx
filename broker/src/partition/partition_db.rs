@@ -19,10 +19,10 @@ impl PartitionDB {
     pub fn with_dir(replica_id: &str, custom_dir: Option<&PathBuf>) -> Result<Self, String> {
         let storage_dir_path = if let Some(custom_dir) = custom_dir {
             let mut dir = custom_dir.clone();
-            dir.push("/storage");
+            dir.push("storage");
             dir
         } else {
-            "/storage".into()
+            "storage".into()
         };
         let storage_dir = DirManager::with_dir(Some(&storage_dir_path));
         let db_file_name = format!("{}.mdb", replica_id);
