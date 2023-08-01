@@ -82,6 +82,8 @@ mod tests {
             id: uuid::Uuid::new_v4().to_string(),
             replica_id: uuid::Uuid::new_v4().to_string(),
             topic: Topic::from("notifications".to_string()),
+            replica_count: 1,
+            partition_number: 1,
         };
 
         let result = Broadcast::all(&mut streams, &test_message);
