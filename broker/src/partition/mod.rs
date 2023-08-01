@@ -54,6 +54,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg_attr(miri, ignore)]
     fn creates_partition_on_broker() {
         let topic = Topic::from("notifications".to_string());
         let custom_dir = PathBuf::from("just_for_test_dir");
