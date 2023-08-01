@@ -61,6 +61,7 @@ impl<'a> MessageHandler<'a> {
             shared_structures::Role::Follower,
             1,
             1,
+            self.broker.custom_dir.as_ref(),
         )?;
         self.broker.create_partition(partition)
     }

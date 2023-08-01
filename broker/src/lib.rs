@@ -29,6 +29,7 @@ pub struct Broker {
     pub stream: TcpStream,
     pub connected_producers: Arc<Mutex<Vec<TcpStream>>>,
     pub addr: String,
+    pub custom_dir: Option<PathBuf>,
 }
 
 impl Broker {
@@ -50,6 +51,7 @@ impl Broker {
                 cluster_metadata,
                 connected_producers,
                 addr,
+                custom_dir,
             },
             Err(_e) => {
                 let id = Uuid::new_v4().to_string();
@@ -68,6 +70,7 @@ impl Broker {
                     cluster_metadata,
                     connected_producers,
                     addr,
+                    custom_dir,
                 };
 
                 broker

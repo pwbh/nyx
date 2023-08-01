@@ -36,7 +36,12 @@ impl DirManager {
             .to_str()
             .ok_or("Failed while validating UTF-8 path integrity.")?;
         let total_path = format!("{}/{}", nyx_dir_str, path);
-        fs::create_dir_all(&total_path).map_err(|e| format!("DirManager: {}", e))?;
+        match fs::create_dir_all(&total_path) {
+            Ok(_) => {}
+            Err(e) => {
+                println!("DirManager -> create func error: {}", e)
+            }
+        };
         Ok(total_path.into())
     }
 
