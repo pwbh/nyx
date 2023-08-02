@@ -11,10 +11,14 @@ env:
 
 jobs:
   test:
-    name: 'Test'
+    name: 'Test & Clippy'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - name: Clippy
+        run: |
+          rustup component add clippy
+          cargo clippy -- -D warnings
       - name: Test
         run: cargo test --verbose
   miri:

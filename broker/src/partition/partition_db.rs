@@ -10,6 +10,7 @@ pub struct DB {
     pub database: Database<OwnedType<u128>, Record>,
 }
 
+#[derive(Default)]
 pub struct PartitionDB {
     pub offest: u128,
     pub db: Option<DB>,
@@ -45,14 +46,5 @@ impl PartitionDB {
 impl Debug for PartitionDB {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Offset: {}", self.offest)
-    }
-}
-
-impl Default for PartitionDB {
-    fn default() -> Self {
-        Self {
-            offest: 0,
-            db: None,
-        }
     }
 }

@@ -5,7 +5,7 @@ use std::{
     path::PathBuf,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct DirManager {
     custom_dir: Option<PathBuf>,
 }
@@ -26,7 +26,7 @@ impl DirManager {
     /// work in the context of the Nyx foder.
     pub fn with_dir(custom_dir: Option<&PathBuf>) -> Self {
         Self {
-            custom_dir: custom_dir.map(|c| c.clone()),
+            custom_dir: custom_dir.cloned(),
         }
     }
 

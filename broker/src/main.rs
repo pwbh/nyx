@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Should start trying to connect to the observer in intervals until success
     loop {
-        match TcpStream::connect(&addr) {
+        match TcpStream::connect(addr) {
             Ok(stream) => {
                 tcp_stream = Some(stream);
                 println!("Connection with the Observer has been established");

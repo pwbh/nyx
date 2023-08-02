@@ -12,7 +12,7 @@ pub struct Producer {
 impl Producer {
     pub fn from(brokers: &str, mode: &str, topic: &str) -> Result<Self, String> {
         let brokers = brokers
-            .split_terminator(",")
+            .split_terminator(',')
             .map(|b| b.to_string())
             .collect();
 

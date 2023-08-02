@@ -3,7 +3,7 @@ pub mod command;
 pub use self::command::Command;
 pub use self::command::CommandName;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct CommandProcessor {
     buf: String,
     history: Vec<String>,

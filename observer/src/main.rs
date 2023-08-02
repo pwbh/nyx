@@ -20,7 +20,7 @@ fn main() -> Result<(), String> {
 
     let config_path = matches
         .get_one::<String>("config")
-        .unwrap_or_else(|| &default_config_path_by_env);
+        .unwrap_or(&default_config_path_by_env);
 
     let role = if leader.is_none() {
         Role::Leader

@@ -4,6 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use partition::PartitionDetails;
 use shared_structures::{Broadcast, DirManager, Message, Metadata, Status, Topic};
 use uuid::Uuid;
 
@@ -65,7 +66,7 @@ impl Broker {
 
                 dir_manager.save(METADATA_FILE, &local_metadata)?;
 
-                let broker = Self {
+                Self {
                     stream,
                     local_metadata,
                     dir_manager,
@@ -73,9 +74,7 @@ impl Broker {
                     connected_producers,
                     addr,
                     custom_dir,
-                };
-
-                broker
+                }
             }
         };
 
@@ -133,22 +132,22 @@ impl Broker {
 
     fn handle_create_partition(
         &mut self,
-        id: &String,
-        replica_id: &String,
+        id: &str,
+        replica_id: &str,
         topic: &Topic,
-        replica_count: usize,
+        replica_number: usize,
         partition_number: usize,
     ) -> Result<(), String> {
-        let partition = Partition::from(
-            id.clone(),
-            replica_id.clone(),
-            Status::Up,
-            topic.clone(),
-            shared_structures::Role::Follower,
+        let partition_details = PartitionDetails {
+            id: id.to_string(),
+            replica_id: replica_id.to_string(),
+            status: Status::Up,
+            topic: topic.clone(),
+            role: shared_structures::Role::Follower,
             partition_number,
-            replica_count,
-            self.custom_dir.as_ref(),
-        )?;
+            replica_number,
+        };
+        let partition = Partition::from(partition_details, self.custom_dir.as_ref())?;
         self.local_metadata.partitions.push(partition);
         self.dir_manager.save(METADATA_FILE, &self.local_metadata)
     }

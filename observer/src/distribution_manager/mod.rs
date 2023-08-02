@@ -46,7 +46,7 @@ impl DistributionManager {
         let broker_id =
             if let Some(disconnected_broker) = brokers_lock.iter_mut().find(|b| b.id == id) {
                 disconnected_broker.restore(stream, addr)?;
-                self.spawn_broker_reader(&disconnected_broker)?;
+                self.spawn_broker_reader(disconnected_broker)?;
                 disconnected_broker.id.clone()
             } else {
                 let mut broker = Broker::from(id, stream, addr)?;
@@ -66,7 +66,7 @@ impl DistributionManager {
         Ok(broker_id)
     }
 
-    fn send_cluster_metadata(&self, brokers: &mut Vec<Broker>) -> Result<(), String> {
+    fn send_cluster_metadata(&self, brokers: &mut [Broker]) -> Result<(), String> {
         let metadata_brokers: Vec<BrokerDetails> = brokers
             .iter()
             .map(|b| BrokerDetails {
@@ -164,11 +164,11 @@ impl DistributionManager {
 
             self.send_cluster_metadata(&mut brokers_lock)?;
 
-            return Ok(partition.id.clone());
+            Ok(partition.id.clone())
 
             // TODO: Should begin leadership race among replications of the Partition.
         } else {
-            return Err(format!("Topic `{}` doesn't exist.", topic_name));
+            Err(format!("Topic `{}` doesn't exist.", topic_name))
         }
     }
 
@@ -295,7 +295,7 @@ fn replicate_pending_partitions_once(
     new_broker: &mut Broker,
 ) -> Result<(), String> {
     for (replications_needed, partition) in pending_replication_partitions.iter_mut().rev() {
-        let mut replica = Partition::replicate(&partition, partition.replica_count + 1);
+        let mut replica = Partition::replicate(partition, partition.replica_count + 1);
         broadcast_replicate_partition(new_broker, &mut replica)?;
         new_broker.partitions.push(replica);
         partition.replica_count += 1;
