@@ -16,6 +16,8 @@ use uuid::Uuid;
 pub const DEV_CONFIG: &str = "dev.properties";
 pub const PROD_CONFIG: &str = "prod.properties";
 
+const DEFAULT_PORT: u16 = 2828;
+
 pub struct Observer {
     id: String,
     role: Role,
@@ -26,13 +28,21 @@ pub struct Observer {
 
 impl Observer {
     pub fn new(config_path: &str, role: Role) -> Result<Self, String> {
+        let port: u16 = if let Ok(port) = std::env::var("PORT") {
+            port.parse::<u16>().unwrap_or(DEFAULT_PORT)
+        } else {
+            DEFAULT_PORT
+        };
+
         let config = Config::from(config_path.into())?;
 
         let distribution_manager = DistributionManager::new(config);
 
         let command_processor = CommandProcessor::new();
 
-        let listener = TcpListener::bind("localhost:3000").map_err(|e| e.to_string())?;
+        let host = format!("localhost:{}", port);
+
+        let listener = TcpListener::bind(host).map_err(|e| e.to_string())?;
 
         Ok(Self {
             id: Uuid::new_v4().to_string(),
