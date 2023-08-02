@@ -1,3 +1,5 @@
+use std::io::stdin;
+
 use clap::{arg, command};
 use producer::Producer;
 
@@ -8,11 +10,25 @@ fn main() -> Result<(), String> {
         .arg(arg!(-m --mode <MODE> "In which mode you want to run the producer 'test' or 'production', defaults to 'production'").required(false).default_value("production"))
         .get_matches();
 
-    let mode = matches
-        .get_one::<&str>("mode")
-        .unwrap_or_else(|| &"production");
+    let brokers = matches.get_one::<String>("brokers").unwrap();
+    let mode = matches.get_one::<String>("mode").unwrap();
+    let topic = matches.get_one::<String>("topic").unwrap();
 
-    let producer = Producer::from(mode, &[])?;
+    let producer = Producer::from(brokers, mode, topic)?;
+
+    println!("Opened streams: {:#?}", producer.streams);
+
+    let mut buf = String::with_capacity(1024);
+
+    loop {
+        stdin().read_line(&mut buf).unwrap();
+
+        if buf == "EXIT" {
+            break;
+        }
+
+        buf.clear()
+    }
 
     Ok(())
 }

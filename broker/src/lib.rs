@@ -4,13 +4,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use shared_structures::{Broadcast, DirManager, Message, Metadata};
+use shared_structures::{Broadcast, DirManager, Message, Metadata, Status, Topic};
 use uuid::Uuid;
 
-mod message_handler;
 mod partition;
 
-pub use message_handler::MessageHandler;
 pub use partition::Partition;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -34,7 +32,11 @@ pub struct Broker {
 
 impl Broker {
     /// Broker will automatically initiate a handshake with the Observer
-    pub fn new(stream: TcpStream, addr: String, name: Option<&String>) -> Result<Self, String> {
+    pub fn new(
+        stream: TcpStream,
+        addr: String,
+        name: Option<&String>,
+    ) -> Result<Arc<Mutex<Self>>, String> {
         let custom_dir: Option<PathBuf> = name.map(|f| f.into());
 
         let cluster_metadata = Metadata { brokers: vec![] };
@@ -79,7 +81,7 @@ impl Broker {
 
         broker.handshake()?;
 
-        Ok(broker)
+        Ok(Arc::new(Mutex::new(broker)))
     }
 
     fn handshake(&mut self) -> Result<(), String> {
@@ -92,7 +94,61 @@ impl Broker {
         )
     }
 
-    fn create_partition(&mut self, partition: Partition) -> Result<(), String> {
+    pub fn handle_raw_message(&mut self, raw_data: &str) -> Result<(), String> {
+        let message = serde_json::from_str::<Message>(raw_data).map_err(|e| e.to_string())?;
+        self.handle_by_message(&message)
+    }
+
+    fn handle_by_message(&mut self, message: &Message) -> Result<(), String> {
+        match message {
+            Message::CreatePartition {
+                id,
+                replica_id,
+                topic,
+                replica_count,
+                partition_number,
+            } => self.handle_create_partition(
+                id,
+                replica_id,
+                topic,
+                *replica_count,
+                *partition_number,
+            ),
+            Message::ProducerWantsToConnect { topic } => {
+                println!("Producer wants to connect to topic `{}`", topic);
+                // TODO: Should send back data with the locations (hosts) that hold the partition for given topic.
+                Ok(())
+            }
+            Message::ClusterMetadata { metadata } => {
+                println!("New metadata received from the cluster: {:#?}", metadata);
+                self.cluster_metadata = metadata.clone();
+                Ok(())
+            }
+            _ => Err(format!(
+                "Message {:?} is not handled in `handle_by_message`.",
+                message
+            )),
+        }
+    }
+
+    fn handle_create_partition(
+        &mut self,
+        id: &String,
+        replica_id: &String,
+        topic: &Topic,
+        replica_count: usize,
+        partition_number: usize,
+    ) -> Result<(), String> {
+        let partition = Partition::from(
+            id.clone(),
+            replica_id.clone(),
+            Status::Up,
+            topic.clone(),
+            shared_structures::Role::Follower,
+            partition_number,
+            replica_count,
+            self.custom_dir.as_ref(),
+        )?;
         self.local_metadata.partitions.push(partition);
         self.dir_manager.save(METADATA_FILE, &self.local_metadata)
     }

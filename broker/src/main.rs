@@ -2,10 +2,11 @@ use std::{
     error::Error,
     io::{BufRead, BufReader},
     net::{TcpListener, TcpStream},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
-use broker::{Broker, MessageHandler};
+use broker::Broker;
 use clap::{arg, command};
 use shared_structures::println_c;
 
@@ -59,7 +60,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let host = listener.local_addr().unwrap();
 
-    let mut broker = Broker::new(stream, host.to_string(), name)?;
+    let broker = Broker::new(stream, host.to_string(), name)?;
+
+    let broker_lock = broker.lock().unwrap();
+
+    let reader_stream = broker_lock.stream.try_clone().map_err(|e| e.to_string())?;
+
+    drop(broker_lock);
 
     println_c(
         &format!(
@@ -69,7 +76,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         50,
     );
 
-    let connected_producers = broker.connected_producers.clone();
+    //    let connected_producers = broker.connected_producers.clone();
+
+    let broker_for_producers = broker.clone();
 
     // Producers listener
     std::thread::spawn(move || loop {
@@ -77,17 +86,17 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         if let Some(stream) = connection {
             match stream {
-                Ok(stream) => connected_producers.lock().unwrap().push(stream),
+                Ok(stream) => {
+                    //    connected_producers.lock().unwrap().push(stream)
+                    read_from_producer(stream, broker_for_producers.clone());
+                    // start a reader
+                }
                 Err(e) => println!("Error: {}", e),
             }
         }
     });
 
     println_c("Initialization complete.", 35);
-
-    let reader_stream = broker.stream.try_clone().map_err(|e| e.to_string())?;
-
-    let mut message_handler = MessageHandler::from(&mut broker)?;
 
     let mut reader: BufReader<TcpStream> = BufReader::new(reader_stream);
 
@@ -101,11 +110,45 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!("Connection with observer has been closed, exiting.");
             break;
         }
-
-        message_handler.handle_raw_message(&buf)?;
+        let mut broker_lock = broker.lock().unwrap();
+        broker_lock.handle_raw_message(&buf)?;
 
         buf.clear();
     }
 
     Ok(())
+}
+
+fn read_from_producer(stream: TcpStream, broker: Arc<Mutex<Broker>>) {
+    std::thread::spawn(move || {
+        let mut buf = String::with_capacity(1024);
+        let mut reader = BufReader::new(stream);
+
+        loop {
+            let bytes_read = match reader.read_line(&mut buf) {
+                Ok(b) => b,
+                Err(e) => {
+                    println!("Producer Read Stream Error: {}", e);
+                    break;
+                }
+            };
+
+            if bytes_read == 0 {
+                println!("Producer is disconnect");
+                break;
+            }
+
+            let mut broker_lock = broker.lock().unwrap();
+
+            match broker_lock.handle_raw_message(&buf) {
+                Ok(_) => {}
+                Err(e) => {
+                    println!("Failed to handle raw message: {}", e);
+                    break;
+                }
+            };
+
+            buf.clear();
+        }
+    });
 }
