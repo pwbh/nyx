@@ -56,13 +56,19 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn all_broadcasts_messages_to_everyone() {
-        let listener = TcpListener::bind("localhost:15000").unwrap();
+        let listener = TcpListener::bind("localhost:0").unwrap();
 
-        let thread1 = std::thread::spawn(|| TcpStream::connect("localhost:15000").unwrap());
+        let port = listener.local_addr().unwrap().port();
 
-        let thread2 = std::thread::spawn(|| TcpStream::connect("localhost:15000").unwrap());
+        let connect_to1 = format!("localhost:{}", port);
+        let connect_to2 = format!("localhost:{}", port);
+        let connect_to3 = format!("localhost:{}", port);
 
-        let thread3 = std::thread::spawn(|| TcpStream::connect("localhost:15000").unwrap());
+        let thread1 = std::thread::spawn(move || TcpStream::connect(connect_to1).unwrap());
+
+        let thread2 = std::thread::spawn(move || TcpStream::connect(connect_to2).unwrap());
+
+        let thread3 = std::thread::spawn(move || TcpStream::connect(connect_to3).unwrap());
 
         let (mut server_to_client_stream_one, _) = listener.accept().unwrap();
         let (mut server_to_client_stream_two, _) = listener.accept().unwrap();
