@@ -3,7 +3,7 @@ use std::net::TcpStream;
 use shared_structures::Broadcast;
 
 pub struct Producer {
-    mode: String,
+    pub mode: String,
     brokers: Vec<String>,
     pub streams: Vec<TcpStream>,
     topic: String,

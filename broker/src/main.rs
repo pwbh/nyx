@@ -30,7 +30,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println_c(&format!("Initializing {}", log_name), 105);
 
-    let mut tcp_stream: Option<TcpStream> = None;
+    let tcp_stream: Option<TcpStream>;
     let mut sleep_interval = 1000;
 
     // Should start trying to connect to the observer in intervals until success

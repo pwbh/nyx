@@ -17,7 +17,7 @@ pub struct Partition {
     partition_number: usize,
     replica_number: usize,
     #[serde(skip_serializing, skip_deserializing)]
-    database: PartitionDB,
+    pub database: PartitionDB,
 }
 
 impl Partition {

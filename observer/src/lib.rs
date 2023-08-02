@@ -19,8 +19,8 @@ pub const PROD_CONFIG: &str = "prod.properties";
 const DEFAULT_PORT: u16 = 2828;
 
 pub struct Observer {
-    id: String,
-    role: Role,
+    pub id: String,
+    pub role: Role,
     pub listener: TcpListener,
     pub distribution_manager: Arc<Mutex<DistributionManager>>,
     pub command_processor: CommandProcessor,

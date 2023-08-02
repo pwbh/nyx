@@ -5,14 +5,14 @@ use shared_structures::DirManager;
 
 use super::record::Record;
 
-struct DB {
-    env: Env,
-    database: Database<OwnedType<u128>, Record>,
+pub struct DB {
+    pub env: Env,
+    pub database: Database<OwnedType<u128>, Record>,
 }
 
 pub struct PartitionDB {
     pub offest: u128,
-    db: Option<DB>,
+    pub db: Option<DB>,
 }
 
 impl PartitionDB {
