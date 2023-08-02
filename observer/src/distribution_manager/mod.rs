@@ -454,15 +454,17 @@ mod tests {
             DistributionManager::new(config);
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
-        let addr = "localhost:8989";
+        let addr = "localhost:0";
         let listener = TcpListener::bind(addr).unwrap();
+
+        let connection_addr = format!("localhost:{}", listener.local_addr().unwrap().port());
 
         let spawned_thread = std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
             stream
         });
 
-        mock_connecting_broker(&addr);
+        mock_connecting_broker(&connection_addr);
 
         let stream = spawned_thread.join().unwrap();
 
