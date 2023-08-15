@@ -10,3 +10,5 @@ description = "Producer is the entity which pushes messages onto the brokers"
 shared_structures = { path = "../shared_structures" }
 
 clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
