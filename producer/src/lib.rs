@@ -9,7 +9,7 @@ pub struct Producer {
     pub mode: String,
     brokers: Vec<String>,
     pub streams: Vec<TcpStream>,
-    topic: String,
+    pub topic: String,
     pub cluster_metadata: Metadata,
 }
 
@@ -20,7 +20,7 @@ impl Producer {
             .map(|b| b.to_string())
             .collect();
 
-        if brokers.len() == 0 {
+        if brokers.is_empty() {
             return Err("No brokers were provided".to_string());
         }
 
@@ -70,7 +70,7 @@ impl Producer {
 
     fn connect(&mut self) -> Result<(), String> {
         for host in self.brokers.iter() {
-            let mut stream = TcpStream::connect(host).map_err(|e| e.to_string())?;
+            let stream = TcpStream::connect(host).map_err(|e| e.to_string())?;
             //    Broadcast::to(
             //        &mut stream,
             //        &shared_structures::Message::ProducerWantsToConnect {
