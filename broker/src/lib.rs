@@ -115,11 +115,6 @@ impl Broker {
                 *replica_count,
                 *partition_number,
             ),
-            Message::ProducerWantsToConnect { topic } => {
-                println!("Producer wants to connect to topic `{}`", topic);
-                // TODO: Should send back data with the locations (hosts) that hold the partition for given topic.
-                Ok(())
-            }
             Message::ClusterMetadata { metadata } => {
                 println!("New metadata received from the cluster: {:#?}", metadata);
                 self.cluster_metadata = metadata.clone();

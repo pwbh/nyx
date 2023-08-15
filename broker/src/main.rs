@@ -8,7 +8,7 @@ use std::{
 
 use broker::Broker;
 use clap::{arg, command};
-use shared_structures::println_c;
+use shared_structures::{println_c, Broadcast};
 
 fn main() -> Result<(), Box<dyn Error>> {
     let matches = command!()
@@ -66,8 +66,6 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let reader_stream = broker_lock.stream.try_clone().map_err(|e| e.to_string())?;
 
-    drop(broker_lock);
-
     println_c(
         &format!(
             "Broker is ready to accept producers on port {}",
@@ -76,7 +74,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         50,
     );
 
-    //    let connected_producers = broker.connected_producers.clone();
+    let connected_producers = broker_lock.connected_producers.clone();
 
     let broker_for_producers = broker.clone();
 
@@ -87,14 +85,25 @@ fn main() -> Result<(), Box<dyn Error>> {
         if let Some(stream) = connection {
             match stream {
                 Ok(stream) => {
-                    //    connected_producers.lock().unwrap().push(stream)
-                    read_from_producer(stream, broker_for_producers.clone());
-                    // start a reader
+                    if let Ok(read_stream) = stream.try_clone() {
+                        connected_producers.lock().unwrap().push(read_stream);
+                        match handshake_with_producer(stream, broker_for_producers.clone()) {
+                            Ok(()) => {}
+                            Err(e) => {
+                                println!(
+                                    "Error while handshaking with connectiong producer: {}",
+                                    e
+                                );
+                            }
+                        };
+                    }
                 }
                 Err(e) => println!("Error: {}", e),
             }
         }
     });
+
+    drop(broker_lock);
 
     println_c("Initialization complete.", 35);
 
@@ -119,7 +128,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn read_from_producer(stream: TcpStream, broker: Arc<Mutex<Broker>>) {
+fn handshake_with_producer(
+    mut stream: TcpStream,
+    broker: Arc<Mutex<Broker>>,
+) -> Result<(), String> {
+    let broker_lock = broker.lock().unwrap();
+
+    Broadcast::to(
+        &mut stream,
+        &shared_structures::Message::ClusterMetadata {
+            metadata: broker_lock.cluster_metadata.clone(),
+        },
+    )?;
+
+    drop(broker_lock);
+
     std::thread::spawn(move || {
         let mut buf = String::with_capacity(1024);
         let mut reader = BufReader::new(stream);
@@ -151,4 +174,6 @@ fn read_from_producer(stream: TcpStream, broker: Arc<Mutex<Broker>>) {
             buf.clear();
         }
     });
+
+    Ok(())
 }

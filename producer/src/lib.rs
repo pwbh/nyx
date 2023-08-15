@@ -1,4 +1,7 @@
-use std::net::TcpStream;
+use std::{
+    io::{BufRead, BufReader},
+    net::TcpStream,
+};
 
 use shared_structures::Broadcast;
 
@@ -31,16 +34,35 @@ impl Producer {
     fn connect(&mut self) -> Result<(), String> {
         for host in self.brokers.iter() {
             let mut stream = TcpStream::connect(host).map_err(|e| e.to_string())?;
-            Broadcast::to(
-                &mut stream,
-                &shared_structures::Message::ProducerWantsToConnect {
-                    topic: self.topic.clone(),
-                },
-            )?;
+            //    Broadcast::to(
+            //        &mut stream,
+            //        &shared_structures::Message::ProducerWantsToConnect {
+            //            topic: self.topic.clone(),
+            //        },
+            //    )?;
             // TODO: should wait for the information from the broker that contains where do all the partitions for requested topic live in the cluster
+            let stream_reader = stream.try_clone().map_err(|e| e.to_string())?;
+            self.open_broker_reader(stream_reader);
             self.streams.push(stream);
         }
 
         Ok(())
+    }
+
+    fn open_broker_reader(&self, stream_reader: TcpStream) {
+        std::thread::spawn(|| {
+            let mut buf = String::with_capacity(1024);
+            let mut reader = BufReader::new(stream_reader);
+
+            loop {
+                let bytes_read = reader.read_line(&mut buf).unwrap();
+
+                if bytes_read == 0 {
+                    break;
+                }
+
+                println!("Recieved message from broker: {:#?}", buf);
+            }
+        });
     }
 }

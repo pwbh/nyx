@@ -79,6 +79,7 @@ impl DistributionManager {
                         id: p.id.clone(),
                         replica_id: p.replica_id.to_string(),
                         role: p.role,
+                        topic: p.topic.lock().unwrap().clone(),
                     })
                     .collect(),
             })
