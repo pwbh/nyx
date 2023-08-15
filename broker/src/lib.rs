@@ -93,14 +93,22 @@ impl Broker {
         )
     }
 
-    pub fn handle_raw_message(&mut self, raw_data: &str) -> Result<(), String> {
+    pub fn handle_raw_message(
+        &mut self,
+        raw_data: &str,
+        remote: Option<&mut TcpStream>,
+    ) -> Result<(), String> {
         let message = serde_json::from_str::<Message>(raw_data).map_err(|e| e.to_string())?;
-        self.handle_by_message(&message)
+        self.handle_by_message(&message, remote)
     }
 
     // Messages from Producers and Observers are all processed here
     // maybe better to split it into two functions for clarity.
-    fn handle_by_message(&mut self, message: &Message) -> Result<(), String> {
+    fn handle_by_message(
+        &mut self,
+        message: &Message,
+        remote: Option<&mut TcpStream>,
+    ) -> Result<(), String> {
         match message {
             Message::CreatePartition {
                 id,
@@ -119,6 +127,21 @@ impl Broker {
                 println!("New metadata received from the cluster: {:#?}", metadata);
                 self.cluster_metadata = metadata.clone();
                 Ok(())
+            }
+            Message::RequestClusterMetadata => {
+                if let Some(remote) = remote {
+                    Broadcast::to(
+                        remote,
+                        &Message::ClusterMetadata {
+                            metadata: self.cluster_metadata.clone(),
+                        },
+                    )
+                } else {
+                    Err(
+                        "RequestClusterMetadata is missing the requesting remote stream"
+                            .to_string(),
+                    )
+                }
             }
             Message::ProducerMessage {
                 replica_id,

@@ -3,14 +3,13 @@ use std::{
     net::TcpStream,
 };
 
-use shared_structures::{Message, Metadata};
+use shared_structures::{metadata::BrokerDetails, Broadcast, Message};
 
 pub struct Producer {
     pub mode: String,
-    brokers: Vec<String>,
-    pub streams: Vec<TcpStream>,
+    pub broker_details: BrokerDetails,
+    pub stream: TcpStream,
     pub topic: String,
-    pub cluster_metadata: Metadata,
 }
 
 impl Producer {
@@ -25,7 +24,15 @@ impl Producer {
         }
 
         // Get metadata from the first broker we are connecting to (Doesn't really matter from which one)
-        let stream = TcpStream::connect(&brokers[0]).map_err(|e| e.to_string())?;
+        // We are just looking for the broker that holds the leader to the topic we want to push to
+        let mut stream = TcpStream::connect(&brokers[0]).map_err(|e| e.to_string())?;
+
+        // Request cluster metadata from the first random broker we are conected to in the provided list
+        Broadcast::to(
+            &mut stream,
+            &shared_structures::Message::RequestClusterMetadata,
+        )?;
+
         let mut reader = BufReader::new(&stream);
         let mut buf = String::with_capacity(1024);
 
@@ -44,49 +51,46 @@ impl Producer {
             shared_structures::Message::ClusterMetadata {
                 metadata: cluster_metadata,
             } => {
-                println!("{:#?}", cluster_metadata);
+                let broker = cluster_metadata
+                    .brokers
+                    .iter()
+                    .find(|b| b.partitions.iter().any(|p| p.topic.name == topic));
 
-                let reader_stream = stream.try_clone().map_err(|e| e.to_string())?;
+                if let Some(broker_details) = broker {
+                    // If the random broker we connected to happen to be the correct one,
+                    // no need to reconnect already connected.
+                    let stream = if stream.peer_addr().unwrap().to_string() == broker_details.addr {
+                        stream
+                    } else {
+                        TcpStream::connect(&broker_details.addr).map_err(|e| e.to_string())?
+                    };
 
-                let mut producer = Self {
-                    mode: mode.to_string(),
-                    brokers,
-                    streams: vec![stream],
-                    topic: topic.to_string(),
-                    cluster_metadata,
-                };
+                    println!("Opened connection to the relevant stream");
 
-                // Open a reader connection to the borker we just read from the metadata, not to waste time on
-                // closing and then re-opening the connection
-                producer.open_broker_reader(reader_stream);
+                    let producer = Self {
+                        mode: mode.to_string(),
+                        broker_details: broker_details.clone(),
+                        stream,
+                        topic: topic.to_string(),
+                    };
 
-                producer.connect()?;
+                    producer.open_broker_reader()?;
 
-                Ok(producer)
+                    Ok(producer)
+                } else {
+                    Err("Couldn't find such topic in the cluster, exiting.".to_string())
+                }
             }
             _ => Err("Wrong message received".to_string()),
         }
     }
 
-    fn connect(&mut self) -> Result<(), String> {
-        for host in self.brokers.iter() {
-            let stream = TcpStream::connect(host).map_err(|e| e.to_string())?;
-            //    Broadcast::to(
-            //        &mut stream,
-            //        &shared_structures::Message::ProducerWantsToConnect {
-            //            topic: self.topic.clone(),
-            //        },
-            //    )?;
-            // TODO: should wait for the information from the broker that contains where do all the partitions for requested topic live in the cluster
-            let stream_reader = stream.try_clone().map_err(|e| e.to_string())?;
-            self.open_broker_reader(stream_reader);
-            self.streams.push(stream);
-        }
+    fn open_broker_reader(&self) -> Result<(), String> {
+        let reader_stream = self
+            .stream
+            .try_clone()
+            .map_err(|e| format!("Producer: {}", e))?;
 
-        Ok(())
-    }
-
-    fn open_broker_reader(&self, reader_stream: TcpStream) {
         std::thread::spawn(|| {
             let mut buf = String::with_capacity(1024);
             let mut reader = BufReader::new(reader_stream);
@@ -101,5 +105,7 @@ impl Producer {
                 println!("Recieved message from broker: {:#?}", buf);
             }
         });
+
+        Ok(())
     }
 }

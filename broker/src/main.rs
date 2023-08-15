@@ -8,7 +8,7 @@ use std::{
 
 use broker::Broker;
 use clap::{arg, command};
-use shared_structures::{println_c, Broadcast};
+use shared_structures::println_c;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let matches = command!()
@@ -120,7 +120,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             break;
         }
         let mut broker_lock = broker.lock().unwrap();
-        broker_lock.handle_raw_message(&buf)?;
+
+        broker_lock.handle_raw_message(&buf, None)?;
 
         buf.clear();
     }
@@ -132,20 +133,13 @@ fn handshake_with_producer(
     mut stream: TcpStream,
     broker: Arc<Mutex<Broker>>,
 ) -> Result<(), String> {
-    let broker_lock = broker.lock().unwrap();
-
-    Broadcast::to(
-        &mut stream,
-        &shared_structures::Message::ClusterMetadata {
-            metadata: broker_lock.cluster_metadata.clone(),
-        },
-    )?;
-
-    drop(broker_lock);
+    let reader_stream = stream
+        .try_clone()
+        .map_err(|e| format!("Broker: failed to instantiate a producer reader stream"))?;
 
     std::thread::spawn(move || {
         let mut buf = String::with_capacity(1024);
-        let mut reader = BufReader::new(stream);
+        let mut reader = BufReader::new(reader_stream);
 
         loop {
             let bytes_read = match reader.read_line(&mut buf) {
@@ -163,7 +157,7 @@ fn handshake_with_producer(
 
             let mut broker_lock = broker.lock().unwrap();
 
-            match broker_lock.handle_raw_message(&buf) {
+            match broker_lock.handle_raw_message(&buf, Some(&mut stream)) {
                 Ok(_) => {}
                 Err(e) => {
                     println!("Failed to handle raw message: {}", e);

@@ -16,8 +16,6 @@ fn main() -> Result<(), String> {
 
     let producer = Producer::from(brokers, mode, topic)?;
 
-    println!("Opened streams: {:#?}", producer.streams);
-
     let mut buf = String::with_capacity(1024);
 
     loop {
@@ -26,8 +24,6 @@ fn main() -> Result<(), String> {
         if buf == "EXIT" {
             break;
         }
-
-        println!("{}", buf);
 
         buf.clear()
     }
