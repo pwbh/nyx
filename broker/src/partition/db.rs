@@ -1,22 +1,19 @@
 use std::{fmt::Debug, path::PathBuf};
 
-use heed::{types::OwnedType, Database, Env, EnvOpenOptions};
+use heed::{
+    types::{OwnedType, SerdeJson},
+    Database, Env, EnvOpenOptions,
+};
+
 use shared_structures::DirManager;
 
-use super::record::Record;
-
 pub struct DB {
+    pub offset: u128,
     pub env: Env,
-    pub database: Database<OwnedType<u128>, Record>,
+    pub db: Database<OwnedType<u128>, SerdeJson<String>>,
 }
 
-#[derive(Default)]
-pub struct PartitionDB {
-    pub offest: u128,
-    pub db: Option<DB>,
-}
-
-impl PartitionDB {
+impl DB {
     pub fn with_dir(replica_id: &str, custom_dir: Option<&PathBuf>) -> Result<Self, String> {
         let storage_dir_path = if let Some(custom_dir) = custom_dir {
             let mut dir = custom_dir.clone();
@@ -33,18 +30,22 @@ impl PartitionDB {
         let env = EnvOpenOptions::new()
             .open(db_file_path)
             .map_err(|e| format!("PartitionDB: {}", e))?;
-        let database: Database<OwnedType<u128>, Record> = env
+        let db: Database<OwnedType<u128>, SerdeJson<String>> = env
             .create_database(None)
             .map_err(|e| format!("PartitionDB: {}", e))?;
-        Ok(Self {
-            offest: 0,
-            db: Some(DB { env, database }),
-        })
+
+        Ok(Self { db, env, offset: 0 })
     }
 }
 
-impl Debug for PartitionDB {
+impl Debug for DB {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Offset: {}", self.offest)
+        let path = if let Some(s) = self.env.path().to_str() {
+            s
+        } else {
+            "No path could be evaluated, not utf-8 characters."
+        };
+
+        write!(f, "env: {} | offset: {}", path, self.offset)
     }
 }

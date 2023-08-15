@@ -52,6 +52,9 @@ pub enum Message {
     ClusterMetadata {
         metadata: Metadata,
     },
+    ProducerMessage {
+        payload: serde_json::Value,
+    },
 }
 
 pub fn println_c(text: &str, color: usize) {

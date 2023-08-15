@@ -2,9 +2,9 @@ use std::path::PathBuf;
 
 use shared_structures::{Role, Status, Topic};
 
-use self::partition_db::PartitionDB;
+use crate::partition::db::DB;
 
-mod partition_db;
+mod db;
 mod record;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -22,24 +22,39 @@ pub struct PartitionDetails {
 pub struct Partition {
     details: PartitionDetails,
     #[serde(skip_serializing, skip_deserializing)]
-    pub database: PartitionDB,
+    database: Option<DB>,
 }
 
 impl Partition {
     pub fn from(details: PartitionDetails, custom_dir: Option<&PathBuf>) -> Result<Self, String> {
-        let database = PartitionDB::with_dir(&details.replica_id, custom_dir)?;
+        let database = DB::with_dir(&details.replica_id, custom_dir)?;
 
-        println!("Database initialized");
+        println!("Database for partition initialized");
 
-        Ok(Self { details, database })
+        Ok(Self {
+            details,
+            database: Some(database),
+        })
     }
 
     // pub fn send_candidacy_for_leadership(&self, observer: &TcpStream) -> Result<()> {}
+
+    pub fn put(&mut self, value: serde_json::Value) -> Result<(), String> {
+        if let Some(db) = self.database.as_mut() {
+            let mut wtxn = db.env.write_txn().map_err(|s| s.to_string())?;
+            let record = value.to_string();
+            db.db
+                .put(&mut wtxn, &db.offset, &record)
+                .map_err(|s| s.to_string())?;
+            wtxn.commit().map_err(|s| s.to_string())?;
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
 
     #[test]
