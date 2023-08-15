@@ -19,7 +19,7 @@ pub struct PartitionDetails {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Partition {
-    details: PartitionDetails,
+    pub details: PartitionDetails,
     #[serde(skip_serializing, skip_deserializing)]
     database: Option<DB>,
 }
@@ -38,7 +38,7 @@ impl Partition {
 
     // pub fn send_candidacy_for_leadership(&self, observer: &TcpStream) -> Result<()> {}
 
-    pub fn put(&mut self, value: serde_json::Value) -> Result<(), String> {
+    pub fn put(&mut self, value: &serde_json::Value) -> Result<(), String> {
         if let Some(db) = self.database.as_mut() {
             let mut wtxn = db.env.write_txn().map_err(|s| s.to_string())?;
             let record = value.to_string();

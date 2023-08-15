@@ -98,6 +98,8 @@ impl Broker {
         self.handle_by_message(&message)
     }
 
+    // Messages from Producers and Observers are all processed here
+    // maybe better to split it into two functions for clarity.
     fn handle_by_message(&mut self, message: &Message) -> Result<(), String> {
         match message {
             Message::CreatePartition {
@@ -122,6 +124,21 @@ impl Broker {
                 println!("New metadata received from the cluster: {:#?}", metadata);
                 self.cluster_metadata = metadata.clone();
                 Ok(())
+            }
+            Message::ProducerMessage {
+                replica_id,
+                payload,
+            } => {
+                if let Some(partition) = self
+                    .local_metadata
+                    .partitions
+                    .iter_mut()
+                    .find(|p| p.details.replica_id == *replica_id)
+                {
+                    partition.put(payload)
+                } else {
+                    Err("No corresponding partition replica was found on the broker.".to_string())
+                }
             }
             _ => Err(format!(
                 "Message {:?} is not handled in `handle_by_message`.",

@@ -53,6 +53,7 @@ pub enum Message {
         metadata: Metadata,
     },
     ProducerMessage {
+        replica_id: String,
         payload: serde_json::Value,
     },
 }
