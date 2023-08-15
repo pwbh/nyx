@@ -14,7 +14,7 @@ fn main() -> Result<(), String> {
     let mode = matches.get_one::<String>("mode").unwrap();
     let topic = matches.get_one::<String>("topic").unwrap();
 
-    let producer = Producer::from(brokers, mode, topic)?;
+    Producer::from(brokers, mode, topic)?;
 
     let mut buf = String::with_capacity(1024);
 

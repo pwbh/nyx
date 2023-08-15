@@ -133,9 +133,12 @@ fn handshake_with_producer(
     mut stream: TcpStream,
     broker: Arc<Mutex<Broker>>,
 ) -> Result<(), String> {
-    let reader_stream = stream
-        .try_clone()
-        .map_err(|e| format!("Broker: failed to instantiate a producer reader stream"))?;
+    let reader_stream = stream.try_clone().map_err(|e| {
+        format!(
+            "Broker: failed to instantiate a producer reader stream, ({})",
+            e
+        )
+    })?;
 
     std::thread::spawn(move || {
         let mut buf = String::with_capacity(1024);
