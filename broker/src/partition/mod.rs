@@ -5,7 +5,6 @@ use shared_structures::{Role, Status, Topic};
 use crate::partition::db::DB;
 
 mod db;
-mod record;
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct PartitionDetails {
