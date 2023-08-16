@@ -44,12 +44,20 @@ impl DB {
 
 impl Debug for DB {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let path = if let Some(s) = self.env.path().to_str() {
-            s
-        } else {
-            "No path could be evaluated, not utf-8 characters."
-        };
+        let txn = self.env.read_txn().unwrap();
+        let mut data = String::new();
+        for key in 0..self.length {
+            let k = self.db.get(&txn, &(key as u128)).unwrap();
+            if let Some(d) = k {
+                data.push_str(&format!("key: {} | data: {:?}\n", key, d));
+            }
+        }
+        txn.commit().unwrap();
 
-        write!(f, "env: {} | length: {}", path, self.length)
+        if data.len() > 0 {
+            write!(f, "{}", data)
+        } else {
+            write!(f, "Empty")
+        }
     }
 }
