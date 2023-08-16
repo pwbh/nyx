@@ -103,6 +103,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
+    println!("Initial data on the broker:");
+
+    for partition in broker_lock.local_metadata.partitions.iter() {
+        println!(
+            "Partition {}: {:#?}",
+            partition.details.replica_id, partition.database
+        );
+    }
+
     drop(broker_lock);
 
     println_c("Initialization complete.", 35);
@@ -139,6 +148,8 @@ fn handshake_with_producer(
             e
         )
     })?;
+
+    println!("Spawning reader: {:#?}", reader_stream);
 
     std::thread::spawn(move || {
         let mut buf = String::with_capacity(1024);

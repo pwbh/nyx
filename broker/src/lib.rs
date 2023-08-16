@@ -15,7 +15,7 @@ pub use partition::Partition;
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct LocalMetadata {
     id: String,
-    partitions: Vec<Partition>,
+    pub partitions: Vec<Partition>,
 }
 
 const METADATA_FILE: &str = "metadata.json";
@@ -47,15 +47,24 @@ impl Broker {
         let dir_manager = DirManager::with_dir(custom_dir.as_ref());
 
         let mut broker = match dir_manager.open::<LocalMetadata>(METADATA_FILE) {
-            Ok(local_metadata) => Self {
-                stream,
-                local_metadata,
-                dir_manager,
-                cluster_metadata,
-                connected_producers,
-                addr,
-                custom_dir,
-            },
+            Ok(mut local_metadata) => {
+                // Making sure to instantiatte a database for each local partition
+                local_metadata.partitions = local_metadata
+                    .partitions
+                    .iter_mut()
+                    .map(|p| Partition::from(p.details.clone(), custom_dir.as_ref()).unwrap())
+                    .collect();
+
+                Self {
+                    stream,
+                    local_metadata,
+                    dir_manager,
+                    cluster_metadata,
+                    connected_producers,
+                    addr,
+                    custom_dir,
+                }
+            }
             Err(_e) => {
                 let id = Uuid::new_v4().to_string();
 
@@ -147,6 +156,9 @@ impl Broker {
                 replica_id,
                 payload,
             } => {
+                println!("Received a message for partition replica {}!!!", replica_id);
+                println!("Message: {:#?}", payload);
+
                 if let Some(partition) = self
                     .local_metadata
                     .partitions

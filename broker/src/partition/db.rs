@@ -8,7 +8,7 @@ use heed::{
 use shared_structures::DirManager;
 
 pub struct DB {
-    pub offset: u128,
+    pub length: u64,
     pub env: Env,
     pub db: Database<OwnedType<u128>, SerdeJson<String>>,
 }
@@ -34,7 +34,11 @@ impl DB {
             .create_database(None)
             .map_err(|e| format!("PartitionDB: {}", e))?;
 
-        Ok(Self { db, env, offset: 0 })
+        let txn = env.read_txn().map_err(|e| e.to_string())?;
+        let length = db.len(&txn).map_err(|e| e.to_string())?;
+        txn.commit().map_err(|e| e.to_string())?;
+
+        Ok(Self { db, env, length })
     }
 }
 
@@ -46,6 +50,6 @@ impl Debug for DB {
             "No path could be evaluated, not utf-8 characters."
         };
 
-        write!(f, "env: {} | offset: {}", path, self.offset)
+        write!(f, "env: {} | length: {}", path, self.length)
     }
 }

@@ -10,6 +10,7 @@ pub struct Producer {
     pub broker_details: BrokerDetails,
     pub stream: TcpStream,
     pub topic: String,
+    pub destination_replica_id: String,
 }
 
 impl Producer {
@@ -51,37 +52,44 @@ impl Producer {
             shared_structures::Message::ClusterMetadata {
                 metadata: cluster_metadata,
             } => {
-                let broker = cluster_metadata
+                let broker_details = cluster_metadata
                     .brokers
                     .iter()
-                    .find(|b| b.partitions.iter().any(|p| p.topic.name == topic));
+                    .find(|b| b.partitions.iter().any(|p| p.topic.name == topic))
+                    .ok_or("Broker with desired partition has not been found.")?;
 
-                if let Some(broker_details) = broker {
-                    // If the random broker we connected to happen to be the correct one,
-                    // no need to reconnect already connected.
-                    let stream = if stream.peer_addr().unwrap().to_string() == broker_details.addr {
-                        stream
-                    } else {
-                        TcpStream::connect(&broker_details.addr).map_err(|e| e.to_string())?
-                    };
+                let partition_details = broker_details
+                    .partitions
+                    .iter()
+                    .find(|p| p.topic.name == topic)
+                    .ok_or("Couldn't find the desited partition on selected broker")?;
 
-                    println!("Opened connection to the relevant stream");
+                // If the random broker we connected to happen to be the correct one,
+                // no need to reconnect already connected.
 
-                    let producer = Self {
-                        mode: mode.to_string(),
-                        broker_details: broker_details.clone(),
-                        stream,
-                        topic: topic.to_string(),
-                    };
+                let peer_addr = stream.peer_addr().map_err(|e| format!("Producer: {}", e))?;
 
-                    producer.open_broker_reader()?;
-
-                    Ok(producer)
+                let stream = if peer_addr.to_string() == broker_details.addr {
+                    stream
                 } else {
-                    Err("Couldn't find such topic in the cluster, exiting.".to_string())
-                }
+                    TcpStream::connect(&broker_details.addr).map_err(|e| e.to_string())?
+                };
+
+                println!("Stream: {:#?}", stream);
+
+                let producer = Self {
+                    mode: mode.to_string(),
+                    broker_details: broker_details.clone(),
+                    stream,
+                    topic: topic.to_string(),
+                    destination_replica_id: partition_details.replica_id.clone(),
+                };
+
+                producer.open_broker_reader()?;
+
+                Ok(producer)
             }
-            _ => Err("Wrong message received".to_string()),
+            _ => Err("Wrong message received on handshake".to_string()),
         }
     }
 

@@ -2,6 +2,8 @@ use std::io::stdin;
 
 use clap::{arg, command};
 use producer::Producer;
+use serde_json::json;
+use shared_structures::Broadcast;
 
 fn main() -> Result<(), String> {
     let matches = command!()
@@ -14,7 +16,19 @@ fn main() -> Result<(), String> {
     let mode = matches.get_one::<String>("mode").unwrap();
     let topic = matches.get_one::<String>("topic").unwrap();
 
-    Producer::from(brokers, mode, topic)?;
+    let mut producer = Producer::from(brokers, mode, topic)?;
+
+    println!("Broker details: {:#?}", producer.broker_details);
+
+    println!("Broadcasting a test message to the partition");
+
+    Broadcast::to(
+        &mut producer.stream,
+        &shared_structures::Message::ProducerMessage {
+            replica_id: producer.destination_replica_id,
+            payload: json!({"message": "test"}),
+        },
+    )?;
 
     let mut buf = String::with_capacity(1024);
 

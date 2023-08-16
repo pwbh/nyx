@@ -6,7 +6,7 @@ use crate::partition::db::DB;
 
 mod db;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct PartitionDetails {
     pub id: String,
     pub replica_id: String,
@@ -21,7 +21,7 @@ pub struct PartitionDetails {
 pub struct Partition {
     pub details: PartitionDetails,
     #[serde(skip_serializing, skip_deserializing)]
-    database: Option<DB>,
+    pub database: Option<DB>,
 }
 
 impl Partition {
@@ -43,11 +43,11 @@ impl Partition {
             let mut wtxn = db.env.write_txn().map_err(|s| s.to_string())?;
             let record = value.to_string();
             db.db
-                .put(&mut wtxn, &db.offset, &record)
+                .put(&mut wtxn, &(db.length as u128), &record)
                 .map_err(|s| s.to_string())?;
             wtxn.commit().map_err(|s| s.to_string())?;
+            db.length += 1;
         }
-
         Ok(())
     }
 }
