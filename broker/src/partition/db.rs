@@ -54,7 +54,7 @@ impl Debug for DB {
         }
         txn.commit().unwrap();
 
-        if data.len() > 0 {
+        if !data.is_empty() {
             write!(f, "{}", data)
         } else {
             write!(f, "Empty")
