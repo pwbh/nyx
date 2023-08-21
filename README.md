@@ -2,7 +2,7 @@
   <img width="64" height="36" src="https://github.com/pwbh/nyx/assets/127856937/efce555c-68d4-4db8-b0cc-3afb85766f57">
 </p>
 
-https://github.com/pwbh/nyx/assets/127856937/5c27bf4d-c27f-4f0f-bddd-c4960cad2b16
+https://github-production-user-asset-6210df.s3.amazonaws.com/127856937/262133986-5c27bf4d-c27f-4f0f-bddd-c4960cad2b16.mp4
 
 ## Observer [WIP]
 
