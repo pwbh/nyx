@@ -2,6 +2,10 @@
   <img width="64" height="36" src="https://github.com/pwbh/nyx/assets/127856937/efce555c-68d4-4db8-b0cc-3afb85766f57">
 </p>
 
+<p align="center">
+https://github.com/pwbh/nyx/assets/127856937/5c27bf4d-c27f-4f0f-bddd-c4960cad2b16
+</p>
+
 ## Observer [WIP]
 
 Observer is a program that sends messages to brokers connected to it. For example, when a new topic is created, Observer is responsible for distributing the partitions of the topic across the brokers for maximum fault tolerance.
