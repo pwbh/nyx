@@ -1,4 +1,6 @@
-# Nyx
+<p align="center">
+  <img src="[https://picsum.photos/460/300](https://github.com/pwbh/nyx/assets/127856937/efce555c-68d4-4db8-b0cc-3afb85766f57)">
+</p>
 
 ## Observer [WIP]
 
