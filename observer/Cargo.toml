@@ -13,3 +13,4 @@ clap.workspace = true
 uuid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sysinfo.workspace = true
