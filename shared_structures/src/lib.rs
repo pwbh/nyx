@@ -28,7 +28,7 @@ pub enum Role {
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-pub enum FollowerType {
+pub enum EntityType {
     Broker,
     Observer,
 }
@@ -52,7 +52,7 @@ pub enum Message {
     DenyLeadership {
         leader_addr: String,
     },
-    BrokerWantsToConnect {
+    BrokerConnectionDetails {
         id: String,
         addr: String,
     },
@@ -60,7 +60,10 @@ pub enum Message {
         topic: String,
     },
     FollowerWantsToConnect {
-        follower_type: FollowerType,
+        entity_type: EntityType,
+    },
+    EntityWantsToConnect {
+        entity_type: EntityType,
     },
     RequestClusterMetadata,
     ClusterMetadata {

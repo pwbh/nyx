@@ -5,7 +5,7 @@ use std::{
 };
 
 use partition::PartitionDetails;
-use shared_structures::{Broadcast, DirManager, Message, Metadata, Status, Topic};
+use shared_structures::{Broadcast, DirManager, EntityType, Message, Metadata, Status, Topic};
 use uuid::Uuid;
 
 mod partition;
@@ -95,7 +95,14 @@ impl Broker {
     fn handshake(&mut self) -> Result<(), String> {
         Broadcast::to(
             &mut self.stream,
-            &Message::BrokerWantsToConnect {
+            &Message::EntityWantsToConnect {
+                entity_type: EntityType::Broker,
+            },
+        )?;
+
+        Broadcast::to(
+            &mut self.stream,
+            &Message::BrokerConnectionDetails {
                 id: self.local_metadata.id.clone(),
                 addr: self.addr.clone(),
             },

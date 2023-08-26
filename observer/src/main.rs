@@ -1,6 +1,6 @@
 use clap::{arg, command};
 use observer::{distribution_manager::DistributionManager, Observer, DEV_CONFIG, PROD_CONFIG};
-use shared_structures::{println_c, FollowerType, Message, Reader, Role};
+use shared_structures::{println_c, EntityType, Message, Reader, Role};
 use std::{
     net::TcpStream,
     sync::{Arc, Mutex, MutexGuard},
@@ -47,12 +47,44 @@ fn main() -> Result<(), String> {
         if let Some(stream) = connection {
             match stream {
                 Ok(stream) => {
-                    match handle_connect_broker(&mut streams_distribution_manager, stream) {
-                        Ok(broker_id) => println!("Broker {} has connected.", broker_id),
-                        Err(e) => println!("Error: {}", e),
+                    if let Ok(message) = Reader::read_message(&stream) {
+                        match message {
+                            Message::FollowerWantsToConnect {
+                                entity_type: EntityType::Observer,
+                            } => {
+                                match handle_connect_observer_follower(
+                                    &mut streams_distribution_manager,
+                                    stream,
+                                ) {
+                                    Ok(observer_follower_id) => {
+                                        println!(
+                                            "Observer follower connected {}",
+                                            observer_follower_id
+                                        )
+                                    }
+                                    Err(e) => {
+                                        println!("Error while establishing connection: {}", e)
+                                    }
+                                }
+                            }
+                            Message::EntityWantsToConnect {
+                                entity_type: EntityType::Broker,
+                            } => match handle_connect_broker(
+                                &mut streams_distribution_manager,
+                                stream,
+                            ) {
+                                Ok(broker_id) => println!("Broker {} connected", broker_id),
+                                Err(e) => println!("Error while establishing connection: {}", e),
+                            },
+                            _ => {
+                                println!("Handhsake failed, message could not be verified from connecting entity.")
+                            }
+                        }
+                    } else {
+                        println!("Could not decode the provided message, skipping connection.")
                     }
                 }
-                Err(e) => println!("Failed to establish connection: {}", e),
+                Err(e) => println!("Failed to establish basic TCP connection: {}", e),
             }
         }
     });
@@ -138,26 +170,11 @@ fn handle_create_command(
     }
 }
 
-fn handle_new_connection(
+fn handle_connect_observer_follower(
     distribution_manager: &mut Arc<Mutex<DistributionManager>>,
     stream: TcpStream,
-) -> Result<(), String> {
-    match Reader::read_message(&stream)? {
-        Message::FollowerWantsToConnect {
-            follower_type: FollowerType::Broker,
-        } => {
-            handle_connect_broker(distribution_manager, stream);
-        }
-
-        _ => {
-            return Err(
-                "Handhsake failed, message could not be verified from connecting entity."
-                    .to_string(),
-            );
-        }
-    }
-
-    Ok(())
+) -> Result<String, String> {
+    Ok(String::from("need to implement"))
 }
 
 fn handle_connect_broker(

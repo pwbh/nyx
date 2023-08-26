@@ -196,7 +196,7 @@ impl DistributionManager {
             }
         };
 
-        if let Message::BrokerWantsToConnect { id, addr } = message {
+        if let Message::BrokerConnectionDetails { id, addr } = message {
             Ok((id, addr, stream))
         } else {
             Err("Handshake with client failed, wrong message received from client.".to_string())
@@ -394,15 +394,15 @@ mod tests {
 
     fn mock_connecting_broker(addr: &str) -> TcpStream {
         let mut mock_stream = TcpStream::connect(addr).unwrap();
-        let mut payload = serde_json::to_string(&Message::BrokerWantsToConnect {
+
+        let mut payload = serde_json::to_string(&Message::BrokerConnectionDetails {
             id: uuid::Uuid::new_v4().to_string(),
             addr: "localhost:123123".to_string(),
         })
         .unwrap();
-
         payload.push('\n');
-
         mock_stream.write(payload.as_bytes()).unwrap();
+
         let read_stream = mock_stream.try_clone().unwrap();
 
         std::thread::spawn(|| {
