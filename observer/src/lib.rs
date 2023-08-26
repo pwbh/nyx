@@ -11,7 +11,7 @@ use command_processor::CommandProcessor;
 use config::Config;
 use distribution_manager::DistributionManager;
 use shared_structures::Role;
-use sysinfo::{CpuExt, NetworkExt, System, SystemExt};
+use sysinfo::{CpuExt, DiskExt, NetworkExt, System, SystemExt};
 use uuid::Uuid;
 
 pub const DEV_CONFIG: &str = "dev.properties";
@@ -50,50 +50,26 @@ impl Observer {
 
         system.refresh_all();
 
-        // We display all disks' information:
-        println!("=> disks:");
+        let mut total_disk_utilization: f64 = 0.0;
+
+        // Display disk status
         for disk in system.disks() {
-            println!("{:?}", disk);
+            total_disk_utilization += disk.total_space() as f64
         }
 
-        // Network interfaces name, data received and data transmitted:
-        println!("=> networks:");
-        for (interface_name, data) in system.networks() {
-            println!(
-                "{}: {}/{} B",
-                interface_name,
-                data.received(),
-                data.transmitted()
-            );
+        total_disk_utilization =
+            (total_disk_utilization / system.disks().len() as f64) * 1.0 * 10f64.powf(-9.0);
+
+        println!("Total disk space: {:.2} GiB", total_disk_utilization);
+        let mut total_cpu_utilization = 0f32;
+
+        for cpu in system.cpus() {
+            total_cpu_utilization += cpu.cpu_usage();
         }
 
-        // Components temperature:
-        println!("=> components:");
-        for component in system.components() {
-            println!("{:?}", component);
-        }
+        total_cpu_utilization = total_cpu_utilization / system.cpus().len() as f32;
 
-        println!("=> system:");
-        // RAM and swap information:
-        println!("total memory: {} bytes", system.total_memory());
-        println!("used memory : {} bytes", system.used_memory());
-        println!("total swap  : {} bytes", system.total_swap());
-        println!("used swap   : {} bytes", system.used_swap());
-
-        // Display system information:
-        println!("System Name:             {:?}", system.name());
-        println!("Kernel Version:   {:?}", system.kernel_version());
-        println!("OS Version:       {:?}", system.os_version());
-        println!("Hostname:        {:?}", system.host_name());
-
-        // Number of CPUs:
-        println!("# of CPUs: {}", system.cpus().len());
-
-        // CPU utilization:
-        println!("=> CPU utilization:");
-        for (i, cpu) in system.cpus().iter().enumerate() {
-            println!("CPU {} at {}", i, cpu.cpu_usage());
-        }
+        println!("Total CPU utilization: {:.1}%", total_cpu_utilization);
 
         Ok(Self {
             id: Uuid::new_v4().to_string(),
