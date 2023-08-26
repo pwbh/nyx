@@ -3,7 +3,7 @@ pub mod config;
 pub mod distribution_manager;
 
 use std::{
-    net::TcpListener,
+    net::{TcpListener, TcpStream},
     sync::{Arc, Mutex},
 };
 
@@ -26,6 +26,7 @@ pub struct Observer {
     pub distribution_manager: Arc<Mutex<DistributionManager>>,
     pub command_processor: CommandProcessor,
     pub system: System,
+    pub followers: Vec<TcpStream>,
 }
 
 impl Observer {
@@ -78,6 +79,7 @@ impl Observer {
             command_processor,
             listener,
             system,
+            followers: vec![],
         })
     }
 

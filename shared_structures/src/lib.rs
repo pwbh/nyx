@@ -21,7 +21,7 @@ pub enum Status {
     Booting,
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Role {
     Follower,
     Leader,

@@ -40,7 +40,7 @@ impl Broker {
     ) -> Result<Arc<Mutex<Self>>, String> {
         let custom_dir: Option<PathBuf> = name.map(|f| f.into());
 
-        let cluster_metadata = Metadata { brokers: vec![] };
+        let cluster_metadata: Metadata = Metadata::default();
 
         let connected_producers = Arc::new(Mutex::new(vec![]));
 
@@ -115,12 +115,12 @@ impl Broker {
         remote: Option<&mut TcpStream>,
     ) -> Result<(), String> {
         let message = serde_json::from_str::<Message>(raw_data).map_err(|e| e.to_string())?;
-        self.handle_by_message(&message, remote)
+        self.handle_message(&message, remote)
     }
 
     // Messages from Producers and Observers are all processed here
     // maybe better to split it into two functions for clarity.
-    fn handle_by_message(
+    fn handle_message(
         &mut self,
         message: &Message,
         remote: Option<&mut TcpStream>,
@@ -178,7 +178,7 @@ impl Broker {
                 }
             }
             _ => Err(format!(
-                "Message {:?} is not handled in `handle_by_message`.",
+                "Message {:?} is not handled in `handle_message`.",
                 message
             )),
         }

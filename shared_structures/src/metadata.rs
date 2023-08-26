@@ -18,3 +18,9 @@ pub struct BrokerDetails {
 pub struct Metadata {
     pub brokers: Vec<BrokerDetails>,
 }
+
+impl Default for Metadata {
+    fn default() -> Self {
+        Self { brokers: vec![] }
+    }
+}

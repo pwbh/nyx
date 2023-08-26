@@ -2,10 +2,12 @@ use clap::{arg, command};
 use observer::{distribution_manager::DistributionManager, Observer, DEV_CONFIG, PROD_CONFIG};
 use shared_structures::{println_c, EntityType, Message, Reader, Role};
 use std::{
+    io::{BufRead, BufReader},
     net::TcpStream,
     sync::{Arc, Mutex, MutexGuard},
 };
 
+// TODO: Leader should delegate all messages to followers, for example it should delegate create broker commands to followers, etc.
 fn main() -> Result<(), String> {
     let default_config_path_by_env = get_config_path_by_env();
     let matches = command!().arg(
@@ -16,7 +18,7 @@ fn main() -> Result<(), String> {
         .required(false)
     ).get_matches();
 
-    let leader: Option<&String> = matches.get_one::<String>("follow");
+    let leader = matches.get_one::<String>("follow");
 
     let config_path = matches
         .get_one::<String>("config")
@@ -30,6 +32,7 @@ fn main() -> Result<(), String> {
 
     let mut observer = Observer::from(config_path, role)?;
 
+    println_c(&format!("Observer started as leader",), 35);
     println_c(
         &format!(
             "Observer is ready to accept brokers on port {}",
@@ -74,7 +77,9 @@ fn main() -> Result<(), String> {
                                 stream,
                             ) {
                                 Ok(broker_id) => println!("Broker {} connected", broker_id),
-                                Err(e) => println!("Error while establishing connection: {}", e),
+                                Err(e) => {
+                                    println!("Error while establishing connection: {}", e)
+                                }
                             },
                             _ => {
                                 println!("Handhsake failed, message could not be verified from connecting entity.")
@@ -88,6 +93,29 @@ fn main() -> Result<(), String> {
             }
         }
     });
+
+    // Leader obsrver exists, enabling the follower functionality
+    if let Some(leader) = leader.cloned() {
+        std::thread::spawn(move || {
+            // TODO: connect to leader
+            let leader_stream = TcpStream::connect(leader).unwrap();
+
+            let mut reader = BufReader::new(&leader_stream);
+            let mut buf = String::with_capacity(1024);
+
+            loop {
+                // TODO: constantly read delegated messages from leader
+                let bytes_read = reader.read_line(&mut buf).unwrap();
+
+                if bytes_read == 0 {
+                    println!("Leader has closed connection. Exiting.");
+                    break;
+                }
+
+                // handle_delegated_message(&buf);
+            }
+        });
+    }
 
     // This will make sure our main thread will never exit until the user will issue an EXIT command by himself
     loop {
