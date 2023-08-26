@@ -1,11 +1,14 @@
 mod broadcast;
 mod dir_manager;
-pub mod metadata;
+mod reader;
 mod topic;
+
+pub mod metadata;
 
 pub use broadcast::Broadcast;
 pub use dir_manager::DirManager;
 pub use metadata::Metadata;
+pub use reader::Reader;
 pub use topic::Topic;
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -24,7 +27,13 @@ pub enum Role {
     Leader,
 }
 
-// TODO: Think of a way to better organize this enum
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub enum FollowerType {
+    Broker,
+    Observer,
+}
+
+// TODO: Think of a way to better organize this enum or split it into more enums
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum Message {
     CreatePartition {
@@ -40,13 +49,18 @@ pub enum Message {
         replica_id: String,
     },
     // Should deny leadership request with the addr of broker where leader resides.
-    DenyLeadership,
+    DenyLeadership {
+        leader_addr: String,
+    },
     BrokerWantsToConnect {
         id: String,
         addr: String,
     },
     ProducerWantsToConnect {
         topic: String,
+    },
+    FollowerWantsToConnect {
+        follower_type: FollowerType,
     },
     RequestClusterMetadata,
     ClusterMetadata {

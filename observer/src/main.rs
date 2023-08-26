@@ -1,6 +1,6 @@
 use clap::{arg, command};
 use observer::{distribution_manager::DistributionManager, Observer, DEV_CONFIG, PROD_CONFIG};
-use shared_structures::{println_c, Role};
+use shared_structures::{println_c, FollowerType, Message, Reader, Role};
 use std::{
     net::TcpStream,
     sync::{Arc, Mutex, MutexGuard},
@@ -16,7 +16,7 @@ fn main() -> Result<(), String> {
         .required(false)
     ).get_matches();
 
-    let leader = matches.get_one::<String>("follow");
+    let leader: Option<&String> = matches.get_one::<String>("follow");
 
     let config_path = matches
         .get_one::<String>("config")
@@ -28,7 +28,7 @@ fn main() -> Result<(), String> {
         Role::Follower
     };
 
-    let mut observer = Observer::new(config_path, role)?;
+    let mut observer = Observer::from(config_path, role)?;
 
     println_c(
         &format!(
@@ -40,7 +40,7 @@ fn main() -> Result<(), String> {
 
     let mut streams_distribution_manager = observer.distribution_manager.clone();
 
-    // Brokers listener
+    // Connections listener
     std::thread::spawn(move || loop {
         let connection = observer.listener.incoming().next();
 
@@ -136,6 +136,28 @@ fn handle_create_command(
         },
         None => Err("Entity type was not provided.".to_string()),
     }
+}
+
+fn handle_new_connection(
+    distribution_manager: &mut Arc<Mutex<DistributionManager>>,
+    stream: TcpStream,
+) -> Result<(), String> {
+    match Reader::read_message(&stream)? {
+        Message::FollowerWantsToConnect {
+            follower_type: FollowerType::Broker,
+        } => {
+            handle_connect_broker(distribution_manager, stream);
+        }
+
+        _ => {
+            return Err(
+                "Handhsake failed, message could not be verified from connecting entity."
+                    .to_string(),
+            );
+        }
+    }
+
+    Ok(())
 }
 
 fn handle_connect_broker(

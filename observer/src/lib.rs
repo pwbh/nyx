@@ -29,7 +29,7 @@ pub struct Observer {
 }
 
 impl Observer {
-    pub fn new(config_path: &str, role: Role) -> Result<Self, String> {
+    pub fn from(config_path: &str, role: Role) -> Result<Self, String> {
         let mut system = System::new_all();
 
         let port: u16 = if let Ok(port) = std::env::var("PORT") {
