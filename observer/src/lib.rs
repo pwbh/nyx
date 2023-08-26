@@ -11,7 +11,7 @@ use command_processor::CommandProcessor;
 use config::Config;
 use distribution_manager::DistributionManager;
 use shared_structures::Role;
-use sysinfo::{CpuExt, DiskExt, NetworkExt, System, SystemExt};
+use sysinfo::{CpuExt, DiskExt, System, SystemExt};
 use uuid::Uuid;
 
 pub const DEV_CONFIG: &str = "dev.properties";
@@ -67,7 +67,7 @@ impl Observer {
             total_cpu_utilization += cpu.cpu_usage();
         }
 
-        total_cpu_utilization = total_cpu_utilization / system.cpus().len() as f32;
+        total_cpu_utilization /= system.cpus().len() as f32;
 
         println!("Total CPU utilization: {:.1}%", total_cpu_utilization);
 
