@@ -1,6 +1,7 @@
 use std::{
     io::{BufRead, BufReader},
     net::TcpStream,
+    path::PathBuf,
     sync::{Arc, Mutex, MutexGuard},
     time::Duration,
 };
@@ -12,34 +13,47 @@ pub use broker::Broker;
 pub use partition::Partition;
 use shared_structures::{
     metadata::{BrokerDetails, PartitionDetails},
-    Broadcast, Message, Metadata, Status, Topic,
+    Broadcast, DirManager, Message, Metadata, Status, Topic,
 };
 
-use crate::config::Config;
+use crate::{config::Config, CLUSTER_FILE};
 
 #[derive(Debug)]
 pub struct DistributionManager {
     pub brokers: Arc<Mutex<Vec<Broker>>>,
-    topics: Vec<Arc<Mutex<Topic>>>,
+    pub topics: Vec<Arc<Mutex<Topic>>>,
+    pub dir_manager: DirManager,
+    pub followers: Vec<TcpStream>,
     config: Config,
     pending_replication_partitions: Vec<(usize, Partition)>,
 }
 
 impl DistributionManager {
-    pub fn new(config: Config, cluster_metadata: &Metadata) -> Result<Arc<Mutex<Self>>, String> {
+    pub fn new(config: Config, name: Option<&String>) -> Result<Arc<Mutex<Self>>, String> {
+        let custom_dir: Option<PathBuf> = name.map(|f| format!("/observer/{}", f).into());
+
+        let dir_manager = DirManager::with_dir(custom_dir.as_ref());
+
+        let cluster_metadata = match dir_manager.open::<Metadata>(CLUSTER_FILE) {
+            Ok(m) => m,
+            Err(_) => Metadata::default(),
+        };
+
         let mut distribution_manager = Self {
             brokers: Arc::new(Mutex::new(vec![])),
             topics: vec![],
             config,
             pending_replication_partitions: vec![],
+            dir_manager,
+            followers: vec![],
         };
 
-        distribution_manager.load_cluster_metadata(cluster_metadata)?;
+        distribution_manager.load_cluster_state(&cluster_metadata)?;
 
         Ok(Arc::new(Mutex::new(distribution_manager)))
     }
 
-    fn load_cluster_metadata(&mut self, cluster_metadata: &Metadata) -> Result<(), String> {
+    fn load_cluster_state(&mut self, cluster_metadata: &Metadata) -> Result<(), String> {
         self.topics = cluster_metadata
             .topics
             .iter()
@@ -91,6 +105,11 @@ impl DistributionManager {
         }
 
         Ok(())
+    }
+
+    pub fn save_cluster_state(&self) -> Result<(), String> {
+        let metadata = self.get_cluster_metadata()?;
+        self.dir_manager.save(CLUSTER_FILE, &metadata)
     }
 
     // Will return the broker id that has been added or restored to the Observer
@@ -169,24 +188,34 @@ impl DistributionManager {
     fn broadcast_cluster_metadata(&mut self) -> Result<(), String> {
         let metadata = self.get_cluster_metadata()?;
 
+        self.save_cluster_state()?;
+
         let mut brokers = self.brokers.lock().unwrap();
 
-        let mut streams: Vec<_> = brokers
+        let mut broker_streams: Vec<_> = brokers
             .iter_mut()
             .filter_map(|b| b.stream.as_mut())
             .collect();
 
-        Broadcast::all(
-            &mut streams[..],
-            &shared_structures::Message::ClusterMetadata { metadata },
-        )
+        let mut followers_streams: Vec<_> = self.followers.iter_mut().map(|f| f).collect();
+
+        let message = shared_structures::Message::ClusterMetadata { metadata };
+
+        Broadcast::all(&mut followers_streams[..], &message)?;
+
+        Broadcast::all(&mut broker_streams[..], &message)
     }
 
     // Will return the name of created topic on success
     pub fn create_topic(&mut self, topic_name: &str) -> Result<String, String> {
         let brokers_lock = self.brokers.lock().unwrap();
 
-        if brokers_lock.len() == 0 {
+        let available_brokers = brokers_lock
+            .iter()
+            .filter(|b| b.status == Status::Up)
+            .count();
+
+        if available_brokers == 0 {
             return Err(
                 "No brokers have been found, please make sure at least one broker is connected."
                     .to_string(),
@@ -479,23 +508,47 @@ fn get_least_distributed_broker<'a>(
 
 #[cfg(test)]
 mod tests {
-    use std::{io::Write, net::TcpListener};
+    use std::{fs, io::Write, net::TcpListener};
+
+    use uuid::Uuid;
 
     use super::*;
+
+    fn cleanup_after_test(custom_test_name: &str) {
+        let mut custom_path = PathBuf::new();
+        custom_path.push("/observer/");
+        custom_path.push(custom_test_name);
+
+        let test_files_path = DirManager::get_base_dir(Some(&custom_path)).unwrap();
+        match fs::remove_dir_all(&test_files_path) {
+            Ok(_) => {
+                println!("Deleted {:?}", test_files_path)
+            }
+
+            Err(e) => println!("Could not delete {:?} | {}", test_files_path, e),
+        }
+    }
 
     fn config_mock() -> Config {
         Config::from("../config/dev.properties".into()).unwrap()
     }
 
-    fn bootstrap_distribution_manager(config: Option<Config>) -> Arc<Mutex<DistributionManager>> {
-        let cluster_metadata = Metadata::default();
+    fn get_custom_test_name() -> String {
+        format!("test_{}", Uuid::new_v4().to_string())
+    }
+
+    fn bootstrap_distribution_manager(
+        config: Option<Config>,
+        custom_test_name: &str,
+    ) -> Arc<Mutex<DistributionManager>> {
         let config = if let Some(config) = config {
             config
         } else {
             config_mock()
         };
+
         let distribution_manager: Arc<Mutex<DistributionManager>> =
-            DistributionManager::new(config, &cluster_metadata).unwrap();
+            DistributionManager::new(config, Some(&custom_test_name.to_string())).unwrap();
 
         distribution_manager
     }
@@ -531,8 +584,12 @@ mod tests {
         mock_stream
     }
 
-    fn setup_distribution_for_tests(config: Config, port: &str) -> Arc<Mutex<DistributionManager>> {
-        let distribution_manager = bootstrap_distribution_manager(Some(config));
+    fn setup_distribution_for_tests(
+        config: Config,
+        port: &str,
+        custom_test_name: &str,
+    ) -> Arc<Mutex<DistributionManager>> {
+        let distribution_manager = bootstrap_distribution_manager(Some(config), &custom_test_name);
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let addr = format!("localhost:{}", port);
@@ -557,7 +614,8 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn create_brokers_works_as_expected() {
-        let distribution_manager = bootstrap_distribution_manager(None);
+        let custom_test_name = get_custom_test_name();
+        let distribution_manager = bootstrap_distribution_manager(None, &custom_test_name);
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let addr = "localhost:0";
@@ -578,13 +636,16 @@ mod tests {
 
         println!("{:?}", result);
 
-        assert!(result.is_ok())
+        assert!(result.is_ok());
+
+        cleanup_after_test(&custom_test_name);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn create_topic_fails_when_no_brokers() {
-        let distribution_manager = bootstrap_distribution_manager(None);
+        let custom_test_name = get_custom_test_name();
+        let distribution_manager = bootstrap_distribution_manager(None, &custom_test_name);
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let topic_name = "new_user_registered";
@@ -595,22 +656,30 @@ mod tests {
             .unwrap_err();
 
         assert!(result.contains("No brokers have been found"));
+
+        cleanup_after_test(&custom_test_name);
     }
 
     #[test]
     #[cfg_attr(miri, ignore)]
     fn create_topic_works_as_expected_when_brokers_exist() {
+        let custom_test_name = get_custom_test_name();
+
         let config = config_mock();
 
         // After brokers have connnected to the Observer
-        let distribution_manager = setup_distribution_for_tests(config, "5001");
+        let distribution_manager = setup_distribution_for_tests(config, "5001", &custom_test_name);
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let topic_name = "new_user_registered";
 
+        let topics_count_before_add = distribution_manager_lock.topics.iter().count();
+
         distribution_manager_lock.create_topic(topic_name).unwrap();
 
-        assert_eq!(distribution_manager_lock.topics.len(), 1);
+        let topic_count_after_add = distribution_manager_lock.topics.iter().count();
+
+        assert_eq!(topic_count_after_add, topics_count_before_add + 1);
 
         // We cant add the same topic name twice - Should error
         let result = distribution_manager_lock
@@ -619,21 +688,28 @@ mod tests {
 
         assert!(result.contains("already exist."));
 
+        let topics_count_before_add = distribution_manager_lock.topics.iter().count();
+
+        let another_topic_name = "notification_resent";
+
         distribution_manager_lock
-            .create_topic("notification_resent")
+            .create_topic(another_topic_name)
             .unwrap();
 
-        assert_eq!(distribution_manager_lock.topics.len(), 2);
-        assert_eq!(
-            distribution_manager_lock
-                .topics
-                .last()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .name,
-            "notification_resent"
-        );
+        let topic_count_after_add = distribution_manager_lock.topics.iter().count();
+
+        assert_eq!(topic_count_after_add, topics_count_before_add + 1);
+
+        let last_element_in_topics = distribution_manager_lock
+            .topics
+            .last()
+            .unwrap()
+            .lock()
+            .unwrap();
+
+        assert_eq!(last_element_in_topics.name, another_topic_name);
+
+        cleanup_after_test(&custom_test_name);
     }
 
     fn get_brokers_with_replicas(
@@ -649,11 +725,12 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn create_partition_distributes_replicas() {
+        let custom_test_name = get_custom_test_name();
         let config = config_mock();
 
         let replica_factor = config.get_number("replica_factor").unwrap();
 
-        let distribution_manager = setup_distribution_for_tests(config, "5002");
+        let distribution_manager = setup_distribution_for_tests(config, "5002", &custom_test_name);
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let notifications_topic = "notifications";
@@ -761,5 +838,7 @@ mod tests {
         drop(brokers_lock);
 
         println!("{:#?}", distribution_manager_lock.brokers);
+
+        cleanup_after_test(&custom_test_name);
     }
 }

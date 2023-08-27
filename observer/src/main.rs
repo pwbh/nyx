@@ -48,7 +48,6 @@ fn main() -> Result<(), String> {
     );
 
     let mut streams_distribution_manager = observer.distribution_manager.clone();
-    let mut streams_followers = observer.followers.clone();
 
     // Connections listener
     std::thread::spawn(move || loop {
@@ -63,7 +62,7 @@ fn main() -> Result<(), String> {
                                 entity_type: EntityType::Observer,
                             } => {
                                 match handle_connect_observer_follower(
-                                    &mut streams_followers,
+                                    &mut streams_distribution_manager,
                                     stream,
                                 ) {
                                     Ok(observer_follower_id) => {
@@ -171,7 +170,14 @@ fn handle_delegated_message(
 
     match delegated_message {
         Message::ClusterMetadata { metadata } => {
-            let distribution_manager_lock = distribution_manager.lock().unwrap();
+            let mut distribution_manager_lock = distribution_manager.lock().unwrap();
+
+            distribution_manager_lock.topics = metadata
+                .topics
+                .iter()
+                .map(|t| Arc::new(Mutex::new(t.clone())))
+                .collect();
+
             let mut brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
 
             for broker in metadata.brokers {
@@ -179,7 +185,7 @@ fn handle_delegated_message(
                 brokers_lock.push(broker);
             }
 
-            Ok(())
+            distribution_manager_lock.save_cluster_state()
         }
         _ => Err("Could not read delegated cluster metadata".to_string()),
     }
@@ -233,12 +239,12 @@ fn handle_create_command(
 }
 
 fn handle_connect_observer_follower(
-    followers: &mut Arc<Mutex<Vec<TcpStream>>>,
+    distribution_manager: &mut Arc<Mutex<DistributionManager>>,
     stream: TcpStream,
 ) -> Result<String, String> {
+    let mut distribution_manager_lock = distribution_manager.lock().unwrap();
     let stream_addr = stream.peer_addr().map_err(|e| e.to_string())?;
-    let mut followers_lock = followers.lock().unwrap();
-    followers_lock.push(stream);
+    distribution_manager_lock.followers.push(stream);
     Ok(stream_addr.to_string())
 }
 
