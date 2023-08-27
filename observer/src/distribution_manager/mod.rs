@@ -88,8 +88,7 @@ impl DistributionManager {
 
         let mut streams: Vec<_> = brokers
             .iter_mut()
-            .filter(|b| b.stream.is_some())
-            .map(|b| b.stream.as_mut().unwrap())
+            .filter_map(|b| b.stream.as_mut())
             .collect();
 
         let topics: Vec<_> = self

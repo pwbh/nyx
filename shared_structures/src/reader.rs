@@ -1,12 +1,11 @@
 use std::io::{BufRead, BufReader};
 
-pub struct Reader<R: std::io::Read> {
-    inner: BufReader<R>,
-    buf: String,
-}
+pub struct Reader;
 
-impl<R: std::io::Read> Reader<R> {
-    pub fn read_message<T: serde::de::DeserializeOwned>(inner: R) -> Result<T, String> {
+impl Reader {
+    pub fn read_message<R: std::io::Read, T: serde::de::DeserializeOwned>(
+        inner: R,
+    ) -> Result<T, String> {
         let mut reader = BufReader::new(inner);
         let mut buf = String::with_capacity(1024);
         let message = reader

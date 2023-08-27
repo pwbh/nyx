@@ -35,7 +35,6 @@ fn main() -> Result<(), String> {
 
     let mut observer = Observer::from(config_path, role)?;
 
-    println_c(&format!("Observer started as leader",), 35);
     println_c(
         &format!(
             "Observer is ready to accept brokers on port {}",
@@ -45,6 +44,7 @@ fn main() -> Result<(), String> {
     );
 
     let mut streams_distribution_manager = observer.distribution_manager.clone();
+    let mut streams_followers = observer.followers.clone();
 
     // Connections listener
     std::thread::spawn(move || loop {
@@ -59,7 +59,7 @@ fn main() -> Result<(), String> {
                                 entity_type: EntityType::Observer,
                             } => {
                                 match handle_connect_observer_follower(
-                                    &mut streams_distribution_manager,
+                                    &mut streams_followers,
                                     stream,
                                 ) {
                                     Ok(observer_follower_id) => {
@@ -229,10 +229,13 @@ fn handle_create_command(
 }
 
 fn handle_connect_observer_follower(
-    distribution_manager: &mut Arc<Mutex<DistributionManager>>,
+    followers: &mut Arc<Mutex<Vec<TcpStream>>>,
     stream: TcpStream,
 ) -> Result<String, String> {
-    Ok(String::from("need to implement"))
+    let stream_addr = stream.peer_addr().map_err(|e| e.to_string())?;
+    let mut followers_lock = followers.lock().unwrap();
+    followers_lock.push(stream);
+    Ok(stream_addr.to_string())
 }
 
 fn handle_connect_broker(

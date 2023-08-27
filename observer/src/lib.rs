@@ -26,7 +26,7 @@ pub struct Observer {
     pub distribution_manager: Arc<Mutex<DistributionManager>>,
     pub command_processor: CommandProcessor,
     pub system: System,
-    pub followers: Vec<TcpStream>,
+    pub followers: Arc<Mutex<Vec<TcpStream>>>,
 }
 
 impl Observer {
@@ -79,9 +79,7 @@ impl Observer {
             command_processor,
             listener,
             system,
-            followers: vec![],
+            followers: Arc::new(Mutex::new(vec![])),
         })
     }
-
-    // test pre-commit...
 }
