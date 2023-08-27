@@ -197,7 +197,7 @@ impl DistributionManager {
             .filter_map(|b| b.stream.as_mut())
             .collect();
 
-        let mut followers_streams: Vec<_> = self.followers.iter_mut().map(|f| f).collect();
+        let mut followers_streams: Vec<_> = self.followers.iter_mut().collect();
 
         let message = shared_structures::Message::ClusterMetadata { metadata };
 
