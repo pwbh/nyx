@@ -19,9 +19,13 @@ fn main() -> Result<(), String> {
     ).arg(
         arg!(-f --follow <HOST> "Runs the Observer as a follower for leader located at <HOST>, Host MUST by booted without -f flag.")
         .required(false)
+    ).arg(
+        arg!(-n --name <NAME> "Assigns a name to the broker, names are useful if you want to run two brokers on the same machine. Useful for nyx maintainers testing multi-node features.")
+        .required(false)
     ).get_matches();
 
     let leader = matches.get_one::<String>("follow");
+    let name = matches.get_one::<String>("name");
 
     let config_path = matches
         .get_one::<String>("config")
@@ -33,7 +37,7 @@ fn main() -> Result<(), String> {
         Role::Follower
     };
 
-    let mut observer = Observer::from(config_path, role)?;
+    let mut observer = Observer::from(config_path, role, name)?;
 
     println_c(
         &format!(

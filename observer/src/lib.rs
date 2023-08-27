@@ -4,13 +4,14 @@ pub mod distribution_manager;
 
 use std::{
     net::{TcpListener, TcpStream},
+    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
 use command_processor::CommandProcessor;
 use config::Config;
 use distribution_manager::DistributionManager;
-use shared_structures::Role;
+use shared_structures::{DirManager, Metadata, Role};
 use sysinfo::{CpuExt, DiskExt, System, SystemExt};
 use uuid::Uuid;
 
@@ -18,6 +19,8 @@ pub const DEV_CONFIG: &str = "dev.properties";
 pub const PROD_CONFIG: &str = "prod.properties";
 
 const DEFAULT_PORT: u16 = 2828;
+
+const CLUSTER_FILE: &str = "cluster.json";
 
 pub struct Observer {
     pub id: String,
@@ -27,10 +30,11 @@ pub struct Observer {
     pub command_processor: CommandProcessor,
     pub system: System,
     pub followers: Arc<Mutex<Vec<TcpStream>>>,
+    pub dir_manager: DirManager,
 }
 
 impl Observer {
-    pub fn from(config_path: &str, role: Role) -> Result<Self, String> {
+    pub fn from(config_path: &str, role: Role, name: Option<&String>) -> Result<Self, String> {
         let mut system = System::new_all();
 
         let port: u16 = if let Ok(port) = std::env::var("PORT") {
@@ -39,9 +43,15 @@ impl Observer {
             DEFAULT_PORT
         };
 
+        let custom_dir: Option<PathBuf> = name.map(|f| format!("/observer/{}", f).into());
+
+        let dir_manager = DirManager::with_dir(custom_dir.as_ref());
+
         let config = Config::from(config_path.into())?;
 
-        let distribution_manager = DistributionManager::new(config);
+        let cluster_metadata = dir_manager.open::<Metadata>(CLUSTER_FILE)?;
+
+        let distribution_manager = DistributionManager::new(config, &cluster_metadata)?;
 
         let command_processor = CommandProcessor::new();
 
@@ -80,6 +90,13 @@ impl Observer {
             listener,
             system,
             followers: Arc::new(Mutex::new(vec![])),
+            dir_manager,
         })
+    }
+
+    pub fn save_cluster_state(&self) -> Result<(), String> {
+        let distribution_manager_lock = self.distribution_manager.lock().unwrap();
+        let metadata = distribution_manager_lock.get_cluster_metadata()?;
+        self.dir_manager.save(CLUSTER_FILE, &metadata)
     }
 }

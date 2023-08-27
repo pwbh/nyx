@@ -26,13 +26,71 @@ pub struct DistributionManager {
 }
 
 impl DistributionManager {
-    pub fn new(config: Config) -> Arc<Mutex<Self>> {
-        Arc::new(Mutex::new(Self {
+    pub fn new(config: Config, cluster_metadata: &Metadata) -> Result<Arc<Mutex<Self>>, String> {
+        let mut distribution_manager = Self {
             brokers: Arc::new(Mutex::new(vec![])),
             topics: vec![],
             config,
             pending_replication_partitions: vec![],
-        }))
+        };
+
+        distribution_manager.load_cluster_metadata(cluster_metadata)?;
+
+        Ok(Arc::new(Mutex::new(distribution_manager)))
+    }
+
+    fn load_cluster_metadata(&mut self, cluster_metadata: &Metadata) -> Result<(), String> {
+        self.topics = cluster_metadata
+            .topics
+            .iter()
+            .map(|t| Arc::new(Mutex::new(t.clone())))
+            .collect();
+
+        let mut brokers_lock = self.brokers.lock().unwrap();
+
+        for b in cluster_metadata.brokers.iter() {
+            let partitions: Vec<_> = b
+                .partitions
+                .iter()
+                .map(|p| {
+                    // Theoratically we should never have a case where we don't find the topic of the
+                    // partition in the system, this is why I allow myself to unwrap here, and crash the system
+                    // if such case occures (Indicates a serious bug in the system).
+                    let topic = self
+                        .topics
+                        .iter()
+                        .find(|t| {
+                            let t_lock = t.lock().unwrap();
+
+                            t_lock.name == p.topic.name
+                        })
+                        .unwrap();
+
+                    Partition {
+                        id: p.id.clone(),
+                        replica_id: p.replica_id.clone(),
+                        partition_number: p.partition_number,
+                        replica_count: p.replica_count,
+                        role: p.role.clone(),
+                        status: Status::Down,
+                        topic: topic.clone(),
+                    }
+                })
+                .collect();
+
+            let offline_broker = Broker {
+                id: b.id.clone(),
+                partitions,
+                stream: None,
+                reader: None,
+                status: Status::Down,
+                addr: b.addr.clone(),
+            };
+
+            brokers_lock.push(offline_broker);
+        }
+
+        Ok(())
     }
 
     // Will return the broker id that has been added or restored to the Observer
@@ -61,12 +119,17 @@ impl DistributionManager {
                 broker_id
             };
 
-        self.send_cluster_metadata(&mut brokers_lock)?;
+        // Releaseing lock for broadcast_cluster_metadata
+        drop(brokers_lock);
+
+        self.broadcast_cluster_metadata()?;
 
         Ok(broker_id)
     }
 
-    fn send_cluster_metadata(&self, brokers: &mut [Broker]) -> Result<(), String> {
+    pub fn get_cluster_metadata(&self) -> Result<Metadata, String> {
+        let brokers = self.brokers.lock().unwrap();
+
         let metadata_brokers: Vec<BrokerDetails> = brokers
             .iter()
             .map(|b| BrokerDetails {
@@ -81,14 +144,11 @@ impl DistributionManager {
                         replica_id: p.replica_id.to_string(),
                         role: p.role,
                         topic: p.topic.lock().unwrap().clone(),
+                        partition_number: p.partition_number,
+                        replica_count: p.replica_count,
                     })
                     .collect(),
             })
-            .collect();
-
-        let mut streams: Vec<_> = brokers
-            .iter_mut()
-            .filter_map(|b| b.stream.as_mut())
             .collect();
 
         let topics: Vec<_> = self
@@ -100,17 +160,26 @@ impl DistributionManager {
             })
             .collect();
 
+        Ok(Metadata {
+            brokers: metadata_brokers,
+            topics,
+        })
+    }
+
+    fn broadcast_cluster_metadata(&mut self) -> Result<(), String> {
+        let metadata = self.get_cluster_metadata()?;
+
+        let mut brokers = self.brokers.lock().unwrap();
+
+        let mut streams: Vec<_> = brokers
+            .iter_mut()
+            .filter_map(|b| b.stream.as_mut())
+            .collect();
+
         Broadcast::all(
             &mut streams[..],
-            &shared_structures::Message::ClusterMetadata {
-                metadata: Metadata {
-                    brokers: metadata_brokers,
-                    topics,
-                },
-            },
-        )?;
-
-        Ok(())
+            &shared_structures::Message::ClusterMetadata { metadata },
+        )
     }
 
     // Will return the name of created topic on success
@@ -177,7 +246,10 @@ impl DistributionManager {
                 &partition,
             )?;
 
-            self.send_cluster_metadata(&mut brokers_lock)?;
+            // Releaseing lock for broadcast_cluster_metadata
+            drop(brokers_lock);
+
+            self.broadcast_cluster_metadata()?;
 
             Ok(partition.id.clone())
 
@@ -415,6 +487,19 @@ mod tests {
         Config::from("../config/dev.properties".into()).unwrap()
     }
 
+    fn bootstrap_distribution_manager(config: Option<Config>) -> Arc<Mutex<DistributionManager>> {
+        let cluster_metadata = Metadata::default();
+        let config = if let Some(config) = config {
+            config
+        } else {
+            config_mock()
+        };
+        let distribution_manager: Arc<Mutex<DistributionManager>> =
+            DistributionManager::new(config, &cluster_metadata).unwrap();
+
+        distribution_manager
+    }
+
     fn mock_connecting_broker(addr: &str) -> TcpStream {
         let mut mock_stream = TcpStream::connect(addr).unwrap();
 
@@ -447,8 +532,7 @@ mod tests {
     }
 
     fn setup_distribution_for_tests(config: Config, port: &str) -> Arc<Mutex<DistributionManager>> {
-        let distribution_manager: Arc<Mutex<DistributionManager>> =
-            DistributionManager::new(config);
+        let distribution_manager = bootstrap_distribution_manager(Some(config));
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let addr = format!("localhost:{}", port);
@@ -473,9 +557,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn create_brokers_works_as_expected() {
-        let config = config_mock();
-        let distribution_manager: Arc<Mutex<DistributionManager>> =
-            DistributionManager::new(config);
+        let distribution_manager = bootstrap_distribution_manager(None);
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let addr = "localhost:0";
@@ -502,9 +584,7 @@ mod tests {
     #[test]
     #[cfg_attr(miri, ignore)]
     fn create_topic_fails_when_no_brokers() {
-        let config = config_mock();
-        let distribution_manager: Arc<Mutex<DistributionManager>> =
-            DistributionManager::new(config);
+        let distribution_manager = bootstrap_distribution_manager(None);
         let mut distribution_manager_lock = distribution_manager.lock().unwrap();
 
         let topic_name = "new_user_registered";

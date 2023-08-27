@@ -38,7 +38,7 @@ impl Broker {
         addr: String,
         name: Option<&String>,
     ) -> Result<Arc<Mutex<Self>>, String> {
-        let custom_dir: Option<PathBuf> = name.map(|f| f.into());
+        let custom_dir: Option<PathBuf> = name.map(|f| format!("/broker/{}", f).into());
 
         let cluster_metadata: Metadata = Metadata::default();
 
