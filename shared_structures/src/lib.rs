@@ -1,5 +1,6 @@
 mod broadcast;
 mod dir_manager;
+mod message_decoder;
 mod reader;
 mod topic;
 
@@ -7,6 +8,7 @@ pub mod metadata;
 
 pub use broadcast::Broadcast;
 pub use dir_manager::DirManager;
+pub use message_decoder::MessageDecoder;
 pub use metadata::Metadata;
 pub use reader::Reader;
 pub use topic::Topic;

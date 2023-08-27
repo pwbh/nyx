@@ -1,6 +1,9 @@
 use clap::{arg, command};
-use observer::{distribution_manager::DistributionManager, Observer, DEV_CONFIG, PROD_CONFIG};
-use shared_structures::{println_c, EntityType, Message, Reader, Role};
+use observer::{
+    distribution_manager::{Broker, DistributionManager},
+    Observer, DEV_CONFIG, PROD_CONFIG,
+};
+use shared_structures::{println_c, EntityType, Message, MessageDecoder, Reader, Role};
 use std::{
     io::{BufRead, BufReader},
     net::TcpStream,
@@ -94,6 +97,8 @@ fn main() -> Result<(), String> {
         }
     });
 
+    let mut followers_distribution_manager = observer.distribution_manager.clone();
+
     // Leader obsrver exists, enabling the follower functionality
     if let Some(leader) = leader.cloned() {
         std::thread::spawn(move || {
@@ -112,7 +117,10 @@ fn main() -> Result<(), String> {
                     break;
                 }
 
-                // handle_delegated_message(&buf);
+                match handle_delegated_message(&buf, &mut followers_distribution_manager) {
+                    Ok(_) => println!("Received delgated cluster metadata successfully"),
+                    Err(e) => println!("Cluster metadata delegation error: {}", e),
+                };
             }
         });
     }
@@ -149,6 +157,28 @@ fn get_config_path_by_env() -> String {
     };
 
     format!("./config/{}", file_name)
+}
+
+fn handle_delegated_message(
+    raw_message: &str,
+    distribution_manager: &mut Arc<Mutex<DistributionManager>>,
+) -> Result<(), String> {
+    let delegated_message = MessageDecoder::decode(raw_message)?;
+
+    match delegated_message {
+        Message::ClusterMetadata { metadata } => {
+            let distribution_manager_lock = distribution_manager.lock().unwrap();
+            let mut brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
+
+            for broker in metadata.brokers {
+                let broker = Broker::from(broker.id, None, broker.addr)?;
+                brokers_lock.push(broker);
+            }
+
+            Ok(())
+        }
+        _ => Err("Could not read delegated cluster metadata".to_string()),
+    }
 }
 
 fn handle_list_command(

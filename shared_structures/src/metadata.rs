@@ -9,6 +9,7 @@ pub struct PartitionDetails {
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct BrokerDetails {
+    pub id: String,
     pub addr: String,
     pub status: Status,
     pub partitions: Vec<PartitionDetails>,
@@ -17,10 +18,14 @@ pub struct BrokerDetails {
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Metadata {
     pub brokers: Vec<BrokerDetails>,
+    pub topics: Vec<Topic>,
 }
 
 impl Default for Metadata {
     fn default() -> Self {
-        Self { brokers: vec![] }
+        Self {
+            brokers: vec![],
+            topics: vec![],
+        }
     }
 }

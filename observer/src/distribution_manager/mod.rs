@@ -49,7 +49,7 @@ impl DistributionManager {
                 self.spawn_broker_reader(disconnected_broker)?;
                 disconnected_broker.id.clone()
             } else {
-                let mut broker = Broker::from(id, stream, addr)?;
+                let mut broker = Broker::from(id, Some(stream), addr)?;
                 self.spawn_broker_reader(&broker)?;
                 let broker_id = broker.id.clone();
                 // Need to replicate the pending partitions if there is any
@@ -70,6 +70,7 @@ impl DistributionManager {
         let metadata_brokers: Vec<BrokerDetails> = brokers
             .iter()
             .map(|b| BrokerDetails {
+                id: b.id.clone(),
                 addr: b.addr.clone(),
                 status: b.status,
                 partitions: b
@@ -85,13 +86,27 @@ impl DistributionManager {
             })
             .collect();
 
-        let mut streams: Vec<_> = brokers.iter_mut().map(|b| &mut b.stream).collect();
+        let mut streams: Vec<_> = brokers
+            .iter_mut()
+            .filter(|b| b.stream.is_some())
+            .map(|b| b.stream.as_mut().unwrap())
+            .collect();
+
+        let topics: Vec<_> = self
+            .topics
+            .iter()
+            .map(|t| {
+                let t_lock = t.lock().unwrap();
+                t_lock.clone()
+            })
+            .collect();
 
         Broadcast::all(
             &mut streams[..],
             &shared_structures::Message::ClusterMetadata {
                 metadata: Metadata {
                     brokers: metadata_brokers,
+                    topics,
                 },
             },
         )?;
@@ -209,64 +224,69 @@ impl DistributionManager {
 
     // TODO: What happens when a broker has lost connection? We need to find a new leader for all partition leaders.
     fn spawn_broker_reader(&self, broker: &Broker) -> Result<(), String> {
-        let watch_stream = broker.stream.try_clone().map_err(|e| e.to_string())?;
+        if let Some(broker_stream) = &broker.stream {
+            let watch_stream = broker_stream.try_clone().map_err(|e| e.to_string())?;
 
-        let brokers = Arc::clone(&self.brokers);
-        let broker_id = broker.id.clone();
+            let brokers = Arc::clone(&self.brokers);
+            let broker_id = broker.id.clone();
 
-        let throttle = self
-            .config
-            .get_number("throttle")
-            .ok_or("Throttle is missing form the configuration file.")?;
+            let throttle = self
+                .config
+                .get_number("throttle")
+                .ok_or("Throttle is missing form the configuration file.")?;
 
-        std::thread::spawn(move || {
-            let mut reader = BufReader::new(watch_stream);
-            let mut buf = String::with_capacity(1024);
+            std::thread::spawn(move || {
+                let mut reader = BufReader::new(watch_stream);
+                let mut buf = String::with_capacity(1024);
 
-            loop {
-                let size = match reader.read_line(&mut buf) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        println!("Error in broker read thread: {}", e);
-                        println!("Retrying to read with throttling at {}ms", throttle);
-                        std::thread::sleep(Duration::from_millis(throttle as u64));
-                        continue;
-                    }
-                };
-
-                // TODO: Think what should happen to the metadata of the broker that has been disconnected.
-                if size == 0 {
-                    println!("Broker {} has disconnected.", broker_id);
-
-                    let mut brokers_lock = brokers.lock().unwrap();
-
-                    if let Some(broker) = brokers_lock.iter_mut().find(|b| b.id == broker_id) {
-                        broker.disconnect();
-
-                        let offline_partitions: Vec<_> = broker
-                            .get_offline_partitions()
-                            .iter()
-                            .map(|p| (&p.id, &p.replica_id, p.replica_count))
-                            .collect();
-
-                        for offline_partition in offline_partitions.iter() {
-                            println!(
-                                "Broker {}:\t{}\t{}\t{}",
-                                broker.id,
-                                offline_partition.0,
-                                offline_partition.1,
-                                offline_partition.2
-                            );
+                loop {
+                    let size = match reader.read_line(&mut buf) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            println!("Error in broker read thread: {}", e);
+                            println!("Retrying to read with throttling at {}ms", throttle);
+                            std::thread::sleep(Duration::from_millis(throttle as u64));
+                            continue;
                         }
-                    } else {
-                        println!("Failed to find the Broker in the system, this can lead to major data loses.");
-                        println!("Please let us know about this message by creating an issue on our GitHub repository https://github.com/pwbh/nyx/issues/new");
+                    };
+
+                    // TODO: Think what should happen to the metadata of the broker that has been disconnected.
+                    if size == 0 {
+                        println!("Broker {} has disconnected.", broker_id);
+
+                        let mut brokers_lock = brokers.lock().unwrap();
+
+                        if let Some(broker) = brokers_lock.iter_mut().find(|b| b.id == broker_id) {
+                            broker.disconnect();
+
+                            let offline_partitions: Vec<_> = broker
+                                .get_offline_partitions()
+                                .iter()
+                                .map(|p| (&p.id, &p.replica_id, p.replica_count))
+                                .collect();
+
+                            for offline_partition in offline_partitions.iter() {
+                                println!(
+                                    "Broker {}:\t{}\t{}\t{}",
+                                    broker.id,
+                                    offline_partition.0,
+                                    offline_partition.1,
+                                    offline_partition.2
+                                );
+                            }
+                        } else {
+                            println!("Failed to find the Broker in the system, this can lead to major data loses.");
+                            println!("Please let us know about this message by creating an issue on our GitHub repository https://github.com/pwbh/nyx/issues/new");
+                        }
+                        break;
                     }
-                    break;
                 }
-            }
-        });
-        Ok(())
+            });
+            Ok(())
+        } else {
+            println!("Ignoring spawning broker reader as Observer follower");
+            Ok(())
+        }
     }
 }
 
@@ -274,16 +294,20 @@ pub fn broadcast_replicate_partition(
     broker: &mut Broker,
     replica: &mut Partition,
 ) -> Result<(), String> {
-    Broadcast::to(
-        &mut broker.stream,
-        &Message::CreatePartition {
-            id: replica.id.clone(),
-            replica_id: replica.replica_id.clone(),
-            topic: replica.topic.lock().unwrap().clone(),
-            partition_number: replica.partition_number,
-            replica_count: replica.replica_count,
-        },
-    )?;
+    if let Some(broker_tream) = &mut broker.stream {
+        Broadcast::to(
+            broker_tream,
+            &Message::CreatePartition {
+                id: replica.id.clone(),
+                replica_id: replica.replica_id.clone(),
+                topic: replica.topic.lock().unwrap().clone(),
+                partition_number: replica.partition_number,
+                replica_count: replica.replica_count,
+            },
+        )?;
+    } else {
+        println!("Ignoring broadcasting message as Observer follower")
+    }
     // After successful creation of the partition on the broker,
     // we can set its status on the observer to Active.
     replica.status = Status::Up;
