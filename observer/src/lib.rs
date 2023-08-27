@@ -49,7 +49,10 @@ impl Observer {
 
         let config = Config::from(config_path.into())?;
 
-        let cluster_metadata = dir_manager.open::<Metadata>(CLUSTER_FILE)?;
+        let cluster_metadata = match dir_manager.open::<Metadata>(CLUSTER_FILE) {
+            Ok(m) => m,
+            Err(_) => Metadata::default(),
+        };
 
         let distribution_manager = DistributionManager::new(config, &cluster_metadata)?;
 
