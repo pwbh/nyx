@@ -71,7 +71,7 @@ impl DistributionManager {
                         replica_id: p.replica_id.clone(),
                         partition_number: p.partition_number,
                         replica_count: p.replica_count,
-                        role: p.role.clone(),
+                        role: p.role,
                         status: Status::Down,
                         topic: topic.clone(),
                     }
