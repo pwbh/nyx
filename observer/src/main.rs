@@ -39,13 +39,17 @@ fn main() -> Result<(), String> {
 
     let mut observer = Observer::from(config_path, role, name)?;
 
-    println_c(
-        &format!(
-            "Observer is ready to accept brokers on port {}",
-            observer.listener.local_addr().unwrap().port()
-        ),
-        35,
-    );
+    if role == Role::Leader {
+        println_c(
+            &format!(
+                "Observer is ready to accept brokers on port {}",
+                observer.listener.local_addr().unwrap().port()
+            ),
+            35,
+        );
+    } else {
+        println_c("Started following leader", 50)
+    }
 
     let mut streams_distribution_manager = observer.distribution_manager.clone();
 
