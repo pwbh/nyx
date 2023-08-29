@@ -56,7 +56,7 @@ fn main() -> Result<(), String> {
                 Ok(stream) => {
                     if let Ok(message) = Reader::read_message(&stream) {
                         match message {
-                            Message::FollowerWantsToConnect {
+                            Message::EntityWantsToConnect {
                                 entity_type: EntityType::Observer,
                             } => {
                                 match handle_connect_observer_follower(
