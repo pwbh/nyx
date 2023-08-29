@@ -1,8 +1,5 @@
 use clap::{arg, command};
-use observer::{
-    distribution_manager::{Broker, DistributionManager},
-    Observer, DEV_CONFIG, PROD_CONFIG,
-};
+use observer::{distribution_manager::DistributionManager, Observer, DEV_CONFIG, PROD_CONFIG};
 use shared_structures::{println_c, Broadcast, EntityType, Message, MessageDecoder, Reader, Role};
 use std::{
     io::{BufRead, BufReader},
@@ -51,7 +48,7 @@ fn main() -> Result<(), String> {
         println_c("Started following leader", 50)
     }
 
-    let mut streams_distribution_manager = observer.distribution_manager.clone();
+    let mut connections_distribution_manager = observer.distribution_manager.clone();
 
     // Connections listener
     std::thread::spawn(move || loop {
@@ -59,16 +56,15 @@ fn main() -> Result<(), String> {
 
         if let Some(stream) = connection {
             match stream {
-                Ok(stream) => {
+                Ok(mut stream) => {
                     println!("stream: {:#?}", stream);
-                    if let Ok(message) = Reader::read_message(&stream) {
-                        println!("{:#?}", message);
+                    if let Ok(message) = Reader::read_one_message(&mut stream) {
                         match message {
                             Message::EntityWantsToConnect {
                                 entity_type: EntityType::Observer,
                             } => {
                                 match handle_connect_observer_follower(
-                                    &mut streams_distribution_manager,
+                                    &mut connections_distribution_manager,
                                     stream,
                                 ) {
                                     Ok(observer_follower_id) => {
@@ -85,7 +81,7 @@ fn main() -> Result<(), String> {
                             Message::EntityWantsToConnect {
                                 entity_type: EntityType::Broker,
                             } => match handle_connect_broker(
-                                &mut streams_distribution_manager,
+                                &mut connections_distribution_manager,
                                 stream,
                             ) {
                                 Ok(broker_id) => println!("Broker {} connected", broker_id),
@@ -107,6 +103,8 @@ fn main() -> Result<(), String> {
     });
 
     let mut followers_distribution_manager = observer.distribution_manager.clone();
+
+    println!("{:?}", leader);
 
     // Leader obsrver exists, enabling the follower functionality, instead of
     // the leader functionality which is able  to create partitions, create topics etc
@@ -131,7 +129,9 @@ fn main() -> Result<(), String> {
 
         loop {
             // TODO: constantly read delegated messages from leader
-            let bytes_read = reader.read_line(&mut buf).unwrap();
+            let bytes_read = reader
+                .read_line(&mut buf)
+                .map_err(|e| format!("Leader follower error: {}", e))?;
 
             if bytes_read == 0 {
                 println!("Leader has closed connection. Exiting.");
@@ -189,23 +189,12 @@ fn handle_delegated_message(
 ) -> Result<(), String> {
     let delegated_message = MessageDecoder::decode(raw_message)?;
 
+    println!("Delegated messaeg: {:?}", delegated_message);
+
     match delegated_message {
         Message::ClusterMetadata { metadata } => {
             let mut distribution_manager_lock = distribution_manager.lock().unwrap();
-
-            distribution_manager_lock.topics = metadata
-                .topics
-                .iter()
-                .map(|t| Arc::new(Mutex::new(t.clone())))
-                .collect();
-
-            let mut brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
-
-            for broker in metadata.brokers {
-                let broker = Broker::from(broker.id, None, broker.addr)?;
-                brokers_lock.push(broker);
-            }
-
+            distribution_manager_lock.load_cluster_state(&metadata)?;
             distribution_manager_lock.save_cluster_state()
         }
         _ => Err("Could not read delegated cluster metadata".to_string()),
@@ -216,7 +205,9 @@ fn handle_list_command(
     distribution_manager: &mut Arc<Mutex<DistributionManager>>,
     command: &observer::command_processor::Command,
 ) -> Result<(), String> {
+    println!("TRYING TO AQUIRE LOCK!");
     let distribution_manager_lock = distribution_manager.lock().unwrap();
+    println!("LOCK AQUIRED!!!");
     let level = command.arguments.first().unwrap();
 
     if level == "ALL" {
@@ -266,7 +257,7 @@ fn handle_connect_observer_follower(
     let mut distribution_manager_lock = distribution_manager.lock().unwrap();
     let stream_addr = stream.peer_addr().map_err(|e| e.to_string())?;
     distribution_manager_lock.followers.push(stream);
-    Ok(stream_addr.to_string())
+    Ok(stream_addr.ip().to_string())
 }
 
 fn handle_connect_broker(

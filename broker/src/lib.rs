@@ -93,19 +93,17 @@ impl Broker {
     }
 
     fn handshake(&mut self) -> Result<(), String> {
-        Broadcast::to(
+        Broadcast::to_many(
             &mut self.stream,
-            &Message::EntityWantsToConnect {
-                entity_type: EntityType::Broker,
-            },
-        )?;
-
-        Broadcast::to(
-            &mut self.stream,
-            &Message::BrokerConnectionDetails {
-                id: self.local_metadata.id.clone(),
-                addr: self.addr.clone(),
-            },
+            &[
+                Message::EntityWantsToConnect {
+                    entity_type: EntityType::Broker,
+                },
+                Message::BrokerConnectionDetails {
+                    id: self.local_metadata.id.clone(),
+                    addr: self.addr.clone(),
+                },
+            ],
         )
     }
 

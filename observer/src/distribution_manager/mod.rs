@@ -22,7 +22,7 @@ use crate::{config::Config, CLUSTER_FILE};
 pub struct DistributionManager {
     pub brokers: Arc<Mutex<Vec<Broker>>>,
     pub topics: Vec<Arc<Mutex<Topic>>>,
-    pub dir_manager: DirManager,
+    pub cluster_dir: DirManager,
     pub followers: Vec<TcpStream>,
     config: Config,
     pending_replication_partitions: Vec<(usize, Partition)>,
@@ -30,11 +30,18 @@ pub struct DistributionManager {
 
 impl DistributionManager {
     pub fn from(config: Config, name: Option<&String>) -> Result<Arc<Mutex<Self>>, String> {
-        let custom_dir: Option<PathBuf> = name.map(|f| format!("/observer/{}", f).into());
+        let custom_dir = if let Some(name) = name {
+            let custom_path = format!("/observer/{}/", name);
+            Some(PathBuf::from(custom_path))
+        } else {
+            Some(PathBuf::from("/observer"))
+        };
 
-        let dir_manager = DirManager::with_dir(custom_dir.as_ref());
+        println!("Custom dir: {:?}", custom_dir);
 
-        let cluster_metadata = match dir_manager.open::<Metadata>(CLUSTER_FILE) {
+        let cluster_dir = DirManager::with_dir(custom_dir.as_ref());
+
+        let cluster_metadata = match cluster_dir.open::<Metadata>(CLUSTER_FILE) {
             Ok(m) => m,
             Err(_) => Metadata::default(),
         };
@@ -44,7 +51,7 @@ impl DistributionManager {
             topics: vec![],
             config,
             pending_replication_partitions: vec![],
-            dir_manager,
+            cluster_dir,
             followers: vec![],
         };
 
@@ -53,7 +60,7 @@ impl DistributionManager {
         Ok(Arc::new(Mutex::new(distribution_manager)))
     }
 
-    fn load_cluster_state(&mut self, cluster_metadata: &Metadata) -> Result<(), String> {
+    pub fn load_cluster_state(&mut self, cluster_metadata: &Metadata) -> Result<(), String> {
         self.topics = cluster_metadata
             .topics
             .iter()
@@ -109,7 +116,7 @@ impl DistributionManager {
 
     pub fn save_cluster_state(&self) -> Result<(), String> {
         let metadata = self.get_cluster_metadata()?;
-        self.dir_manager.save(CLUSTER_FILE, &metadata)
+        self.cluster_dir.save(CLUSTER_FILE, &metadata)
     }
 
     // Will return the broker id that has been added or restored to the Observer
@@ -117,9 +124,12 @@ impl DistributionManager {
     // meaning that this broker has disconnected in one of many possible ways, including user interference, unexpected system crush
     // or any other reason. Observer should try and sync with the brokers via the brokers provided id.
     pub fn connect_broker(&mut self, stream: TcpStream) -> Result<String, String> {
+        println!("NEW BROKER: {:?}", stream);
         // Handshake process between the Broker and Observer happening in get_broker_metadata
         let (id, addr, stream) = self.get_broker_metadata(stream)?;
+        println!("BROKER METADATA: {} {} {:?}", id, addr, stream);
         let mut brokers_lock = self.brokers.lock().unwrap();
+        println!("AQUIRED BROKER LOCK");
         let broker_id =
             if let Some(disconnected_broker) = brokers_lock.iter_mut().find(|b| b.id == id) {
                 disconnected_broker.restore(stream, addr)?;
@@ -128,12 +138,12 @@ impl DistributionManager {
             } else {
                 let mut broker = Broker::from(id, Some(stream), addr)?;
                 self.spawn_broker_reader(&broker)?;
-                let broker_id = broker.id.clone();
                 // Need to replicate the pending partitions if there is any
                 replicate_pending_partitions_once(
                     &mut self.pending_replication_partitions,
                     &mut broker,
                 )?;
+                let broker_id = broker.id.clone();
                 brokers_lock.push(broker);
                 broker_id
             };
@@ -199,7 +209,11 @@ impl DistributionManager {
 
         let mut followers_streams: Vec<_> = self.followers.iter_mut().collect();
 
+        println!("Followers: {:?}", followers_streams);
+
         let message = shared_structures::Message::ClusterMetadata { metadata };
+
+        println!("BROADCASTING!!!");
 
         Broadcast::all(&mut followers_streams[..], &message)?;
         Broadcast::all(&mut broker_streams[..], &message)
@@ -295,7 +309,11 @@ impl DistributionManager {
 
         let mut reader = BufReader::new(&stream);
 
+        println!("WAITING FOR LINE FROM BROKER");
+
         let bytes_read = reader.read_line(&mut buf).map_err(|e| e.to_string())?;
+
+        println!("LINE RECEIEVED");
 
         if bytes_read == 0 {
             return Err("Client exited unexpectadly during handhsake.".to_string());
@@ -393,9 +411,9 @@ pub fn broadcast_replicate_partition(
     broker: &mut Broker,
     replica: &mut Partition,
 ) -> Result<(), String> {
-    if let Some(broker_tream) = &mut broker.stream {
+    if let Some(broker_stream) = &mut broker.stream {
         Broadcast::to(
-            broker_tream,
+            broker_stream,
             &Message::CreatePartition {
                 id: replica.id.clone(),
                 replica_id: replica.replica_id.clone(),
