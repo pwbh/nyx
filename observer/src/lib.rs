@@ -44,7 +44,7 @@ impl Observer {
         };
 
         let leader_stream = if let Some(leader) = leader {
-            let mut stream = TcpStream::connect(&leader)
+            let mut stream = TcpStream::connect(leader)
                 .map_err(|e| format!("Error on attemp to connect to leader, {}", e))?;
 
             Broadcast::to(
