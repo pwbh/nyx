@@ -111,41 +111,38 @@ fn main() -> Result<(), String> {
     // Leader obsrver exists, enabling the follower functionality, instead of
     // the leader functionality which is able  to create partitions, create topics etc
     if let Some(leader) = leader.cloned() {
-        std::thread::spawn(move || {
-            // TODO: connect to leader
-            let mut leader_stream = TcpStream::connect(leader).unwrap();
+        // TODO: connect to leader
+        let mut leader_stream = TcpStream::connect(leader).unwrap();
 
-            match Broadcast::to(
-                &mut leader_stream,
-                &shared_structures::Message::EntityWantsToConnect {
-                    entity_type: EntityType::Observer,
-                },
-            ) {
-                Ok(_) => println!("Sent connection request to leader."),
-                Err(e) => {
-                    println!("Failed connecting to leader: {}", e);
-                    return;
-                }
-            };
-
-            let mut reader = BufReader::new(&leader_stream);
-            let mut buf = String::with_capacity(1024);
-
-            loop {
-                // TODO: constantly read delegated messages from leader
-                let bytes_read = reader.read_line(&mut buf).unwrap();
-
-                if bytes_read == 0 {
-                    println!("Leader has closed connection. Exiting.");
-                    break;
-                }
-
-                match handle_delegated_message(&buf, &mut followers_distribution_manager) {
-                    Ok(_) => println!("Received delgated cluster metadata successfully"),
-                    Err(e) => println!("Cluster metadata delegation error: {}", e),
-                };
+        match Broadcast::to(
+            &mut leader_stream,
+            &shared_structures::Message::EntityWantsToConnect {
+                entity_type: EntityType::Observer,
+            },
+        ) {
+            Ok(_) => println!("Sent connection request to leader."),
+            Err(e) => {
+                return Err(format!("Failed connecting to leader: {}", e));
             }
-        });
+        };
+
+        let mut reader = BufReader::new(&leader_stream);
+        let mut buf = String::with_capacity(1024);
+
+        loop {
+            // TODO: constantly read delegated messages from leader
+            let bytes_read = reader.read_line(&mut buf).unwrap();
+
+            if bytes_read == 0 {
+                println!("Leader has closed connection. Exiting.");
+                break;
+            }
+
+            match handle_delegated_message(&buf, &mut followers_distribution_manager) {
+                Ok(_) => println!("Received delgated cluster metadata successfully"),
+                Err(e) => println!("Cluster metadata delegation error: {}", e),
+            };
+        }
     } else {
         // This will make sure our main thread will never exit until the user will issue an EXIT command by himself
         loop {
