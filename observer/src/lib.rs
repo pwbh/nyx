@@ -3,14 +3,14 @@ pub mod config;
 pub mod distribution_manager;
 
 use std::{
-    net::{TcpListener, TcpStream},
+    net::TcpListener,
     sync::{Arc, Mutex},
 };
 
 use command_processor::CommandProcessor;
 use config::Config;
 use distribution_manager::DistributionManager;
-use shared_structures::{Broadcast, EntityType, Role};
+use shared_structures::Role;
 use sysinfo::{CpuExt, DiskExt, System, SystemExt};
 use uuid::Uuid;
 
@@ -28,7 +28,6 @@ pub struct Observer {
     pub distribution_manager: Arc<Mutex<DistributionManager>>,
     pub command_processor: CommandProcessor,
     pub system: System,
-    pub leader_stream: Option<TcpStream>,
 }
 
 impl Observer {
@@ -43,22 +42,6 @@ impl Observer {
             Role::Follower
         };
 
-        let leader_stream = if let Some(leader) = leader {
-            let mut stream = TcpStream::connect(leader)
-                .map_err(|e| format!("Error on attemp to connect to leader, {}", e))?;
-
-            Broadcast::to(
-                &mut stream,
-                &shared_structures::Message::EntityWantsToConnect {
-                    entity_type: EntityType::Observer,
-                },
-            )?;
-
-            Some(stream)
-        } else {
-            None
-        };
-
         let mut system = System::new_all();
 
         let port: u16 = if let Ok(port) = std::env::var("PORT") {
@@ -69,7 +52,7 @@ impl Observer {
 
         let config = Config::from(config_path.into())?;
 
-        let distribution_manager = DistributionManager::new(config, name)?;
+        let distribution_manager = DistributionManager::from(config, name)?;
 
         let command_processor = CommandProcessor::new();
 
@@ -107,7 +90,6 @@ impl Observer {
             command_processor,
             listener,
             system,
-            leader_stream,
         };
 
         Ok(observer)

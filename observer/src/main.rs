@@ -3,7 +3,7 @@ use observer::{
     distribution_manager::{Broker, DistributionManager},
     Observer, DEV_CONFIG, PROD_CONFIG,
 };
-use shared_structures::{println_c, EntityType, Message, MessageDecoder, Reader, Role};
+use shared_structures::{println_c, Broadcast, EntityType, Message, MessageDecoder, Reader, Role};
 use std::{
     io::{BufRead, BufReader},
     net::TcpStream,
@@ -27,6 +27,10 @@ fn main() -> Result<(), String> {
     let leader = matches.get_one::<String>("follow");
     let name = matches.get_one::<String>("name");
 
+    if leader.is_some() && name.is_none() {
+        return Err("Name should be provided if following functionality enabled.".to_string());
+    }
+
     let config_path = matches
         .get_one::<String>("config")
         .unwrap_or(&default_config_path_by_env);
@@ -41,6 +45,8 @@ fn main() -> Result<(), String> {
             ),
             35,
         );
+    } else if let Some(name) = name {
+        println_c(&format!("Started following leader as {}", name), 50)
     } else {
         println_c("Started following leader", 50)
     }
@@ -54,7 +60,9 @@ fn main() -> Result<(), String> {
         if let Some(stream) = connection {
             match stream {
                 Ok(stream) => {
+                    println!("stream: {:#?}", stream);
                     if let Ok(message) = Reader::read_message(&stream) {
+                        println!("{:#?}", message);
                         match message {
                             Message::EntityWantsToConnect {
                                 entity_type: EntityType::Observer,
@@ -100,11 +108,25 @@ fn main() -> Result<(), String> {
 
     let mut followers_distribution_manager = observer.distribution_manager.clone();
 
-    // Leader obsrver exists, enabling the follower functionality
+    // Leader obsrver exists, enabling the follower functionality, instead of
+    // the leader functionality which is able  to create partitions, create topics etc
     if let Some(leader) = leader.cloned() {
         std::thread::spawn(move || {
             // TODO: connect to leader
-            let leader_stream = TcpStream::connect(leader).unwrap();
+            let mut leader_stream = TcpStream::connect(leader).unwrap();
+
+            match Broadcast::to(
+                &mut leader_stream,
+                &shared_structures::Message::EntityWantsToConnect {
+                    entity_type: EntityType::Observer,
+                },
+            ) {
+                Ok(_) => println!("Sent connection request to leader."),
+                Err(e) => {
+                    println!("Failed connecting to leader: {}", e);
+                    return;
+                }
+            };
 
             let mut reader = BufReader::new(&leader_stream);
             let mut buf = String::with_capacity(1024);
@@ -124,30 +146,34 @@ fn main() -> Result<(), String> {
                 };
             }
         });
+    } else {
+        // This will make sure our main thread will never exit until the user will issue an EXIT command by himself
+        loop {
+            match observer.command_processor.process_raw_command() {
+                Ok(command) => match command {
+                    observer::command_processor::Command {
+                        name: observer::command_processor::CommandName::Create,
+                        ..
+                    } => {
+                        match handle_create_command(&mut observer.distribution_manager, &command) {
+                            Ok(()) => println!("\x1b[38;5;2mOK\x1b[0m"),
+                            Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
+                        }
+                    }
+                    observer::command_processor::Command {
+                        name: observer::command_processor::CommandName::List,
+                        ..
+                    } => match handle_list_command(&mut observer.distribution_manager, &command) {
+                        Ok(()) => println!("\x1b[38;5;2mOK\x1b[0m"),
+                        Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
+                    },
+                },
+                Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
+            };
+        }
     }
 
-    // This will make sure our main thread will never exit until the user will issue an EXIT command by himself
-    loop {
-        match observer.command_processor.process_raw_command() {
-            Ok(command) => match command {
-                observer::command_processor::Command {
-                    name: observer::command_processor::CommandName::Create,
-                    ..
-                } => match handle_create_command(&mut observer.distribution_manager, &command) {
-                    Ok(()) => println!("\x1b[38;5;2mOK\x1b[0m"),
-                    Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
-                },
-                observer::command_processor::Command {
-                    name: observer::command_processor::CommandName::List,
-                    ..
-                } => match handle_list_command(&mut observer.distribution_manager, &command) {
-                    Ok(()) => println!("\x1b[38;5;2mOK\x1b[0m"),
-                    Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
-                },
-            },
-            Err(e) => println!("\x1b[38;5;1mERROR:\x1b[0m {}", e),
-        };
-    }
+    Ok(())
 }
 
 fn get_config_path_by_env() -> String {

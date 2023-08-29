@@ -29,7 +29,7 @@ pub struct DistributionManager {
 }
 
 impl DistributionManager {
-    pub fn new(config: Config, name: Option<&String>) -> Result<Arc<Mutex<Self>>, String> {
+    pub fn from(config: Config, name: Option<&String>) -> Result<Arc<Mutex<Self>>, String> {
         let custom_dir: Option<PathBuf> = name.map(|f| format!("/observer/{}", f).into());
 
         let dir_manager = DirManager::with_dir(custom_dir.as_ref());
@@ -202,7 +202,6 @@ impl DistributionManager {
         let message = shared_structures::Message::ClusterMetadata { metadata };
 
         Broadcast::all(&mut followers_streams[..], &message)?;
-
         Broadcast::all(&mut broker_streams[..], &message)
     }
 
@@ -548,7 +547,7 @@ mod tests {
         };
 
         let distribution_manager: Arc<Mutex<DistributionManager>> =
-            DistributionManager::new(config, Some(&custom_test_name.to_string())).unwrap();
+            DistributionManager::from(config, Some(&custom_test_name.to_string())).unwrap();
 
         distribution_manager
     }
