@@ -10,7 +10,7 @@ use std::{
 use command_processor::CommandProcessor;
 use config::Config;
 use distribution_manager::DistributionManager;
-use shared_structures::Role;
+use shared_structures::{Broadcast, EntityType, Role};
 use sysinfo::{CpuExt, DiskExt, System, SystemExt};
 use uuid::Uuid;
 
@@ -32,7 +32,33 @@ pub struct Observer {
 }
 
 impl Observer {
-    pub fn from(config_path: &str, role: Role, name: Option<&String>) -> Result<Self, String> {
+    pub fn from(
+        config_path: &str,
+        leader: Option<&String>,
+        name: Option<&String>,
+    ) -> Result<Self, String> {
+        let role = if leader.is_none() {
+            Role::Leader
+        } else {
+            Role::Follower
+        };
+
+        let leader_stream = if let Some(leader) = leader {
+            let mut stream = TcpStream::connect(&leader)
+                .map_err(|e| format!("Error on attemp to connect to leader, {}", e))?;
+
+            Broadcast::to(
+                &mut stream,
+                &shared_structures::Message::EntityWantsToConnect {
+                    entity_type: EntityType::Observer,
+                },
+            )?;
+
+            Some(stream)
+        } else {
+            None
+        };
+
         let mut system = System::new_all();
 
         let port: u16 = if let Ok(port) = std::env::var("PORT") {
@@ -63,7 +89,7 @@ impl Observer {
         total_disk_utilization =
             (total_disk_utilization / system.disks().len() as f64) * 1.0 * 10f64.powf(-9.0);
 
-        println!("Total disk space: {:.2} GiB", total_disk_utilization);
+        println!("Disk space: {:.2} GiB", total_disk_utilization);
         let mut total_cpu_utilization = 0f32;
 
         for cpu in system.cpus() {
@@ -72,16 +98,18 @@ impl Observer {
 
         total_cpu_utilization /= system.cpus().len() as f32;
 
-        println!("Total CPU utilization: {:.1}%", total_cpu_utilization);
+        println!("CPU utilization: {:.1}%", total_cpu_utilization);
 
-        Ok(Self {
+        let observer = Self {
             id: Uuid::new_v4().to_string(),
             role,
             distribution_manager,
             command_processor,
             listener,
             system,
-            leader_stream: None,
-        })
+            leader_stream,
+        };
+
+        Ok(observer)
     }
 }

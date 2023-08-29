@@ -31,15 +31,9 @@ fn main() -> Result<(), String> {
         .get_one::<String>("config")
         .unwrap_or(&default_config_path_by_env);
 
-    let role = if leader.is_none() {
-        Role::Leader
-    } else {
-        Role::Follower
-    };
+    let mut observer = Observer::from(config_path, leader, name)?;
 
-    let mut observer = Observer::from(config_path, role, name)?;
-
-    if role == Role::Leader {
+    if observer.role == Role::Leader {
         println_c(
             &format!(
                 "Observer is ready to accept brokers on port {}",
