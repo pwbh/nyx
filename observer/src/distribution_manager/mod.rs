@@ -13,7 +13,7 @@ pub use broker::Broker;
 pub use partition::Partition;
 use shared_structures::{
     metadata::{BrokerDetails, PartitionDetails},
-    Broadcast, DirManager, Message, Metadata, Status, Topic,
+    Broadcast, DirManager, Message, MessageDecoder, Metadata, Reader, Status, Topic,
 };
 
 use crate::{config::Config, CLUSTER_FILE};
@@ -303,32 +303,11 @@ impl DistributionManager {
 
     fn get_broker_metadata(
         &self,
-        stream: TcpStream,
+        mut stream: TcpStream,
     ) -> Result<(String, String, TcpStream), String> {
-        let mut buf = String::with_capacity(1024);
-
-        let mut reader = BufReader::new(&stream);
-
-        println!("WAITING FOR LINE FROM BROKER");
-
-        let bytes_read = reader.read_line(&mut buf).map_err(|e| e.to_string())?;
-
-        println!("LINE RECEIEVED");
-
-        if bytes_read == 0 {
-            return Err("Client exited unexpectadly during handhsake.".to_string());
-        }
-
-        let message = match serde_json::from_str::<Message>(&buf) {
-            Ok(m) => m,
-            Err(_) => {
-                return Err(
-                    "Handshake with client failed, unrecognized payload received".to_string(),
-                )
-            }
-        };
-
-        if let Message::BrokerConnectionDetails { id, addr } = message {
+        if let Message::BrokerConnectionDetails { id, addr } =
+            Reader::read_one_message(&mut stream)?
+        {
             Ok((id, addr, stream))
         } else {
             Err("Handshake with client failed, wrong message received from client.".to_string())
@@ -397,6 +376,8 @@ impl DistributionManager {
                         }
                         break;
                     }
+
+                    buf.clear();
                 }
             });
             Ok(())
@@ -595,6 +576,8 @@ mod tests {
                 if size == 0 {
                     break;
                 }
+
+                buf.clear();
             }
         });
 
