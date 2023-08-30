@@ -124,7 +124,7 @@ fn main() -> Result<(), String> {
             }
         };
 
-        let mut reader = BufReader::new(&leader_stream);
+        let mut reader: BufReader<&mut TcpStream> = BufReader::new(&mut leader_stream);
         let mut buf = String::with_capacity(1024);
 
         loop {
@@ -142,6 +142,8 @@ fn main() -> Result<(), String> {
                 Ok(_) => println!("Received delgated cluster metadata successfully"),
                 Err(e) => println!("Cluster metadata delegation error: {}", e),
             };
+
+            buf.clear();
         }
     } else {
         // This will make sure our main thread will never exit until the user will issue an EXIT command by himself
