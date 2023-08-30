@@ -13,7 +13,7 @@ pub use broker::Broker;
 pub use partition::Partition;
 use shared_structures::{
     metadata::{BrokerDetails, PartitionDetails},
-    Broadcast, DirManager, Message, MessageDecoder, Metadata, Reader, Status, Topic,
+    Broadcast, DirManager, Message, Metadata, Reader, Status, Topic,
 };
 
 use crate::{config::Config, CLUSTER_FILE};
