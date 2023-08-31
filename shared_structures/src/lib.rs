@@ -1,11 +1,16 @@
 mod broadcast;
 mod dir_manager;
-pub mod metadata;
+mod message_decoder;
+mod reader;
 mod topic;
+
+pub mod metadata;
 
 pub use broadcast::Broadcast;
 pub use dir_manager::DirManager;
+pub use message_decoder::MessageDecoder;
 pub use metadata::Metadata;
+pub use reader::Reader;
 pub use topic::Topic;
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -18,13 +23,19 @@ pub enum Status {
     Booting,
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Role {
     Follower,
     Leader,
 }
 
-// TODO: Think of a way to better organize this enum
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+pub enum EntityType {
+    Broker,
+    Observer,
+}
+
+// TODO: Think of a way to better organize this enum or split it into more enums
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub enum Message {
     CreatePartition {
@@ -40,13 +51,21 @@ pub enum Message {
         replica_id: String,
     },
     // Should deny leadership request with the addr of broker where leader resides.
-    DenyLeadership,
-    BrokerWantsToConnect {
+    DenyLeadership {
+        leader_addr: String,
+    },
+    BrokerConnectionDetails {
         id: String,
         addr: String,
     },
     ProducerWantsToConnect {
         topic: String,
+    },
+    FollowerWantsToConnect {
+        entity_type: EntityType,
+    },
+    EntityWantsToConnect {
+        entity_type: EntityType,
     },
     RequestClusterMetadata,
     ClusterMetadata {

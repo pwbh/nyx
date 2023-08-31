@@ -79,7 +79,7 @@ impl DirManager {
         Ok(filepath.into())
     }
 
-    fn get_base_dir(custom_path: Option<&PathBuf>) -> Result<PathBuf, String> {
+    pub fn get_base_dir(custom_path: Option<&PathBuf>) -> Result<PathBuf, String> {
         let final_path = if let Some(custom_path) = custom_path {
             let dist = custom_path
                 .clone()

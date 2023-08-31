@@ -7,26 +7,37 @@ use super::partition::Partition;
 #[derive(Debug)]
 pub struct Broker {
     pub id: String,
-    pub stream: TcpStream,
+    pub stream: Option<TcpStream>,
     pub partitions: Vec<Partition>,
-    pub reader: BufReader<TcpStream>,
+    pub reader: Option<BufReader<TcpStream>>,
     pub status: Status,
     pub addr: String,
 }
 
 impl Broker {
-    pub fn from(id: String, stream: TcpStream, addr: String) -> Result<Self, String> {
-        let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
-        let reader = BufReader::new(read_stream);
+    pub fn from(id: String, stream: Option<TcpStream>, addr: String) -> Result<Self, String> {
+        if let Some(stream) = stream {
+            let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
+            let reader = BufReader::new(read_stream);
 
-        Ok(Self {
-            id,
-            partitions: vec![],
-            stream,
-            reader,
-            status: Status::Up,
-            addr,
-        })
+            Ok(Self {
+                id,
+                partitions: vec![],
+                stream: Some(stream),
+                reader: Some(reader),
+                status: Status::Up,
+                addr,
+            })
+        } else {
+            Ok(Self {
+                id,
+                partitions: vec![],
+                stream: None,
+                reader: None,
+                status: Status::Up,
+                addr,
+            })
+        }
     }
 
     pub fn restore(&mut self, stream: TcpStream, addr: String) -> Result<(), String> {
@@ -34,8 +45,8 @@ impl Broker {
         let reader = BufReader::new(read_stream);
 
         self.status = Status::Up;
-        self.stream = stream;
-        self.reader = reader;
+        self.stream = Some(stream);
+        self.reader = Some(reader);
         self.addr = addr;
 
         for partition in self.partitions.iter_mut() {
