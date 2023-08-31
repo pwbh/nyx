@@ -19,6 +19,8 @@ pub const PROD_CONFIG: &str = "prod.properties";
 
 const DEFAULT_PORT: u16 = 2828;
 
+pub const CLUSTER_FILE: &str = "cluster.json";
+
 pub struct Observer {
     pub id: String,
     pub role: Role,
@@ -29,7 +31,17 @@ pub struct Observer {
 }
 
 impl Observer {
-    pub fn new(config_path: &str, role: Role) -> Result<Self, String> {
+    pub fn from(
+        config_path: &str,
+        leader: Option<&String>,
+        name: Option<&String>,
+    ) -> Result<Self, String> {
+        let role = if leader.is_none() {
+            Role::Leader
+        } else {
+            Role::Follower
+        };
+
         let mut system = System::new_all();
 
         let port: u16 = if let Ok(port) = std::env::var("PORT") {
@@ -40,7 +52,7 @@ impl Observer {
 
         let config = Config::from(config_path.into())?;
 
-        let distribution_manager = DistributionManager::new(config);
+        let distribution_manager = DistributionManager::from(config, name)?;
 
         let command_processor = CommandProcessor::new();
 
@@ -60,7 +72,7 @@ impl Observer {
         total_disk_utilization =
             (total_disk_utilization / system.disks().len() as f64) * 1.0 * 10f64.powf(-9.0);
 
-        println!("Total disk space: {:.2} GiB", total_disk_utilization);
+        println!("Disk space: {:.2} GiB", total_disk_utilization);
         let mut total_cpu_utilization = 0f32;
 
         for cpu in system.cpus() {
@@ -69,15 +81,17 @@ impl Observer {
 
         total_cpu_utilization /= system.cpus().len() as f32;
 
-        println!("Total CPU utilization: {:.1}%", total_cpu_utilization);
+        println!("CPU utilization: {:.1}%", total_cpu_utilization);
 
-        Ok(Self {
+        let observer = Self {
             id: Uuid::new_v4().to_string(),
             role,
             distribution_manager,
             command_processor,
             listener,
             system,
-        })
+        };
+
+        Ok(observer)
     }
 }

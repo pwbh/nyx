@@ -43,6 +43,34 @@ impl Broadcast {
 
         Ok(())
     }
+
+    pub fn to_many(stream: &mut TcpStream, messages: &[Message]) -> Result<(), String> {
+        let mut payloads: Vec<String> = vec![];
+
+        for message in messages {
+            let mut payload = serde_json::to_string(message)
+                .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
+            payload.push('\n');
+            payloads.push(payload);
+        }
+
+        println!("{:#?}", payloads);
+
+        let payload_bytes: Vec<_> = payloads
+            .iter()
+            .flat_map(|p| p.as_bytes().to_owned())
+            .collect();
+
+        let bytes = &payload_bytes[..];
+
+        let bytes_written = stream.write(bytes).map_err(|e| e.to_string())?;
+
+        if bytes_written == 0 {
+            return Err("0 bytes have been written, might be an error, please create a new issue in nyx repository.".to_string());
+        }
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

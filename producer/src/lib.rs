@@ -3,7 +3,7 @@ use std::{
     net::TcpStream,
 };
 
-use shared_structures::{metadata::BrokerDetails, Broadcast, Message};
+use shared_structures::{metadata::BrokerDetails, Broadcast, Reader};
 
 pub struct Producer {
     pub mode: String,
@@ -34,19 +34,7 @@ impl Producer {
             &shared_structures::Message::RequestClusterMetadata,
         )?;
 
-        let mut reader = BufReader::new(&stream);
-        let mut buf = String::with_capacity(1024);
-
-        let bytes_read = reader
-            .read_line(&mut buf)
-            .map_err(|e| format!("Producer: {}", e))?;
-
-        if bytes_read == 0 {
-            return Err("Got nothing from broker, something went wrong".to_string());
-        }
-
-        let message =
-            serde_json::from_str::<Message>(&buf).map_err(|e| format!("Producer: {}", e))?;
+        let message = Reader::read_one_message(&mut stream)?;
 
         match message {
             shared_structures::Message::ClusterMetadata {
@@ -111,6 +99,8 @@ impl Producer {
                 }
 
                 println!("Recieved message from broker: {:#?}", buf);
+
+                buf.clear();
             }
         });
 

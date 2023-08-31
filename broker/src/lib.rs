@@ -5,7 +5,7 @@ use std::{
 };
 
 use partition::PartitionDetails;
-use shared_structures::{Broadcast, DirManager, Message, Metadata, Status, Topic};
+use shared_structures::{Broadcast, DirManager, EntityType, Message, Metadata, Status, Topic};
 use uuid::Uuid;
 
 mod partition;
@@ -38,9 +38,9 @@ impl Broker {
         addr: String,
         name: Option<&String>,
     ) -> Result<Arc<Mutex<Self>>, String> {
-        let custom_dir: Option<PathBuf> = name.map(|f| f.into());
+        let custom_dir: Option<PathBuf> = name.map(|f| format!("/broker/{}", f).into());
 
-        let cluster_metadata = Metadata { brokers: vec![] };
+        let cluster_metadata: Metadata = Metadata::default();
 
         let connected_producers = Arc::new(Mutex::new(vec![]));
 
@@ -93,12 +93,17 @@ impl Broker {
     }
 
     fn handshake(&mut self) -> Result<(), String> {
-        Broadcast::to(
+        Broadcast::to_many(
             &mut self.stream,
-            &Message::BrokerWantsToConnect {
-                id: self.local_metadata.id.clone(),
-                addr: self.addr.clone(),
-            },
+            &[
+                Message::EntityWantsToConnect {
+                    entity_type: EntityType::Broker,
+                },
+                Message::BrokerConnectionDetails {
+                    id: self.local_metadata.id.clone(),
+                    addr: self.addr.clone(),
+                },
+            ],
         )
     }
 
@@ -108,12 +113,12 @@ impl Broker {
         remote: Option<&mut TcpStream>,
     ) -> Result<(), String> {
         let message = serde_json::from_str::<Message>(raw_data).map_err(|e| e.to_string())?;
-        self.handle_by_message(&message, remote)
+        self.handle_message(&message, remote)
     }
 
     // Messages from Producers and Observers are all processed here
     // maybe better to split it into two functions for clarity.
-    fn handle_by_message(
+    fn handle_message(
         &mut self,
         message: &Message,
         remote: Option<&mut TcpStream>,
@@ -171,7 +176,7 @@ impl Broker {
                 }
             }
             _ => Err(format!(
-                "Message {:?} is not handled in `handle_by_message`.",
+                "Message {:?} is not handled in `handle_message`.",
                 message
             )),
         }
