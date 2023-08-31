@@ -13,5 +13,6 @@ uuid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 clap.workspace = true
+bincode.workspace = true
 
 heed = "0.11.0"

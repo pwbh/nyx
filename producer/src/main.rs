@@ -39,41 +39,9 @@ fn main() -> Result<(), String> {
             &shared_structures::Message::ProducerMessage {
                 replica_id: producer.destination_replica_id.clone(),
                 payload: json!({
-                  "_meta": {
-                    "template_version": 0
-                  },
-                  "fixtures": [
-                    {
-                      "name": "cus_jenny_rosen",
-                      "path": "/v1/customers",
-                      "method": "post",
-                      "params": {
-                        "name": "Jenny Rosen",
-                        "email": "jenny@rosen.com",
-                        "source": "tok_visa",
-                        "address": {
-                          "line1": "1 Main Street",
-                          "city": "New York"
-                        }
-                      }
-                    },
-                    {
-                      "name": "ch_jenny_charge",
-                      "path": "/v1/charges",
-                      "method": "post",
-                      "params": {
-                        "customer": "${cus_jenny_rosen:id}",
-                        "amount": 100,
-                        "currency": "usd",
-                        "capture": false
-                      }
-                    },
-                    {
-                      "name": "capt_bender",
-                      "path": "/v1/charges/${ch_jenny_charge:id}/capture",
-                      "method": "post"
-                    }
-                  ]
+                  "name": "capt_bender",
+                  "path": "/v1/charges/${ch_jenny_charge:id}/capture",
+                  "method": "post"
                 }),
             },
         )?;

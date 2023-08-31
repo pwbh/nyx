@@ -31,9 +31,10 @@ impl Broadcast {
 
         payload.push('\n');
 
-        let bytes_written = stream
-            .write(payload.as_bytes())
-            .map_err(|e| e.to_string())?;
+        let result = bincode::serialize(message)
+            .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
+
+        let bytes_written = stream.write(&result[..]).map_err(|e| e.to_string())?;
 
         //  println!("Message broadcasted with {} bytes", bytes_written);
 
