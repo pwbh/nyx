@@ -35,7 +35,7 @@ impl Broadcast {
             .write(payload.as_bytes())
             .map_err(|e| e.to_string())?;
 
-        println!("Message broadcasted with {} bytes", bytes_written);
+        //  println!("Message broadcasted with {} bytes", bytes_written);
 
         if bytes_written == 0 {
             return Err("0 bytes have been written, might be an error, please create a new issue in nyx repository.".to_string());

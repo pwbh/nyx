@@ -1,4 +1,7 @@
-use std::{fmt::Debug, path::PathBuf};
+use std::{
+    fmt::{Debug, Display},
+    path::PathBuf,
+};
 
 use heed::{
     types::{OwnedType, SerdeJson},
@@ -28,8 +31,10 @@ impl DB {
             .create(&db_file_name)
             .map_err(|e| format!("PartitionDB: {}", e))?;
         let env = EnvOpenOptions::new()
+            .map_size(60000 * 1024 * 1024)
             .open(db_file_path)
             .map_err(|e| format!("PartitionDB: {}", e))?;
+
         let db: Database<OwnedType<u128>, SerdeJson<String>> = env
             .create_database(None)
             .map_err(|e| format!("PartitionDB: {}", e))?;
@@ -39,6 +44,12 @@ impl DB {
         txn.commit().map_err(|e| e.to_string())?;
 
         Ok(Self { db, env, length })
+    }
+}
+
+impl Display for DB {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Total records in partition: {}", self.length)
     }
 }
 

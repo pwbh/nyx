@@ -106,10 +106,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("Initial data on the broker:");
 
     for partition in broker_lock.local_metadata.partitions.iter() {
-        println!(
-            "Partition {}: {:#?}",
-            partition.details.replica_id, partition.database
-        );
+        if let Some(db) = &partition.database {
+            println!("Partition {}: {}", partition.details.replica_id, db);
+        }
     }
 
     drop(broker_lock);

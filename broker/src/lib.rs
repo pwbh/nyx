@@ -161,8 +161,8 @@ impl Broker {
                 replica_id,
                 payload,
             } => {
-                println!("Received a message for partition replica {}!!!", replica_id);
-                println!("Message: {:#?}", payload);
+                //  println!("Received a message for partition replica {}!!!", replica_id);
+                //  println!("Message: {:#?}", payload);
 
                 if let Some(partition) = self
                     .local_metadata
