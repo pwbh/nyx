@@ -112,11 +112,7 @@ impl Broker {
         raw_data: &str,
         remote: Option<&mut TcpStream>,
     ) -> Result<(), String> {
-        // let message = serde_json::from_str::<Message>(raw_data).map_err(|e| e.to_string())?;
-
-        let message =
-            bincode::deserialize::<Message>(raw_data.as_bytes()).map_err(|e| e.to_string())?;
-
+        let message = serde_json::from_str::<Message>(raw_data).map_err(|e| e.to_string())?;
         self.handle_message(&message, remote)
     }
 
