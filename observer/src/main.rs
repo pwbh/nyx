@@ -8,7 +8,8 @@ use std::{
 };
 
 // TODO: Leader should delegate all messages to followers, for example it should delegate create broker commands to followers, etc.
-fn main() -> Result<(), String> {
+#[tokio::main]
+async fn main() -> Result<(), String> {
     let default_config_path_by_env = get_config_path_by_env();
     let matches = command!().arg(
         clap::Arg::new("config")
@@ -32,7 +33,7 @@ fn main() -> Result<(), String> {
         .get_one::<String>("config")
         .unwrap_or(&default_config_path_by_env);
 
-    let mut observer = Observer::from(config_path, leader, name)?;
+    let mut observer = Observer::from(config_path, leader, name).await?;
 
     if observer.role == Role::Leader {
         println_c(
@@ -51,14 +52,14 @@ fn main() -> Result<(), String> {
     let mut connections_distribution_manager = observer.distribution_manager.clone();
 
     // Connections listener
-    std::thread::spawn(move || loop {
-        let connection = observer.listener.incoming().next();
+    tokio::spawn(async move {
+        loop {
+            let connection = observer.listener.accept().await;
 
-        if let Some(stream) = connection {
-            match stream {
-                Ok(mut stream) => {
+            match connection {
+                Ok((mut stream, _)) => {
                     println!("stream: {:#?}", stream);
-                    if let Ok(message) = Reader::read_one_message(&mut stream) {
+                    if let Ok(message) = Reader::read_one_message_tokio(&mut stream).await {
                         match message {
                             Message::EntityWantsToConnect {
                                 entity_type: EntityType::Observer,
@@ -254,7 +255,7 @@ fn handle_create_command(
 
 fn handle_connect_observer_follower(
     distribution_manager: &mut Arc<Mutex<DistributionManager>>,
-    stream: TcpStream,
+    stream: tokio::net::TcpStream,
 ) -> Result<String, String> {
     let mut distribution_manager_lock = distribution_manager.lock().unwrap();
     let stream_addr = stream.peer_addr().map_err(|e| e.to_string())?;
@@ -264,7 +265,7 @@ fn handle_connect_observer_follower(
 
 fn handle_connect_broker(
     distribution_manager: &mut Arc<Mutex<DistributionManager>>,
-    stream: TcpStream,
+    stream: tokio::net::TcpStream,
 ) -> Result<String, String> {
     let mut distribution_manager_lock = distribution_manager.lock().unwrap();
     distribution_manager_lock.connect_broker(stream)

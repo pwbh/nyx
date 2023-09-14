@@ -1,6 +1,4 @@
 use std::{
-    io::{BufRead, BufReader},
-    net::TcpStream,
     path::PathBuf,
     sync::{Arc, Mutex, MutexGuard},
     time::Duration,
@@ -15,6 +13,7 @@ use shared_structures::{
     metadata::{BrokerDetails, PartitionDetails},
     Broadcast, DirManager, Message, Metadata, Reader, Status, Topic,
 };
+use tokio::io::AsyncBufReadExt;
 
 use crate::{config::Config, CLUSTER_FILE};
 
@@ -23,7 +22,7 @@ pub struct DistributionManager {
     pub brokers: Arc<Mutex<Vec<Broker>>>,
     pub topics: Vec<Arc<Mutex<Topic>>>,
     pub cluster_dir: DirManager,
-    pub followers: Vec<TcpStream>,
+    pub followers: Vec<tokio::net::TcpStream>,
     config: Config,
     pending_replication_partitions: Vec<(usize, Partition)>,
 }
@@ -103,7 +102,6 @@ impl DistributionManager {
                 id: b.id.clone(),
                 partitions,
                 stream: None,
-                reader: None,
                 status: Status::Down,
                 addr: b.addr.clone(),
             };
@@ -123,10 +121,13 @@ impl DistributionManager {
     // TODO: Should check whether a broker that is being added already exists in the system + if it's Status is `Down`
     // meaning that this broker has disconnected in one of many possible ways, including user interference, unexpected system crush
     // or any other reason. Observer should try and sync with the brokers via the brokers provided id.
-    pub fn connect_broker(&mut self, stream: TcpStream) -> Result<String, String> {
+    pub async fn connect_broker(
+        &mut self,
+        stream: tokio::net::TcpStream,
+    ) -> Result<String, String> {
         println!("NEW BROKER: {:?}", stream);
         // Handshake process between the Broker and Observer happening in get_broker_metadata
-        let (id, addr, stream) = self.get_broker_metadata(stream)?;
+        let (id, addr, stream) = self.get_broker_metadata(stream).await?;
         println!("BROKER METADATA: {} {} {:?}", id, addr, stream);
         let mut brokers_lock = self.brokers.lock().unwrap();
         println!("AQUIRED BROKER LOCK");
@@ -142,7 +143,8 @@ impl DistributionManager {
                 replicate_pending_partitions_once(
                     &mut self.pending_replication_partitions,
                     &mut broker,
-                )?;
+                )
+                .await?;
                 let broker_id = broker.id.clone();
                 brokers_lock.push(broker);
                 broker_id
@@ -151,7 +153,7 @@ impl DistributionManager {
         // Releaseing lock for broadcast_cluster_metadata
         drop(brokers_lock);
 
-        self.broadcast_cluster_metadata()?;
+        self.broadcast_cluster_metadata().await?;
 
         Ok(broker_id)
     }
@@ -195,7 +197,7 @@ impl DistributionManager {
         })
     }
 
-    fn broadcast_cluster_metadata(&mut self) -> Result<(), String> {
+    async fn broadcast_cluster_metadata(&mut self) -> Result<(), String> {
         let metadata = self.get_cluster_metadata()?;
 
         self.save_cluster_state()?;
@@ -204,7 +206,7 @@ impl DistributionManager {
 
         let mut broker_streams: Vec<_> = brokers
             .iter_mut()
-            .filter_map(|b| b.stream.as_mut())
+            .filter_map(|b| b.stream.map(|s| s.lock()).as_mut())
             .collect();
 
         let mut followers_streams: Vec<_> = self.followers.iter_mut().collect();
@@ -215,8 +217,8 @@ impl DistributionManager {
 
         println!("BROADCASTING!!!");
 
-        Broadcast::all(&mut followers_streams[..], &message)?;
-        Broadcast::all(&mut broker_streams[..], &message)
+        Broadcast::all_tokio(&mut followers_streams[..], &message).await?;
+        Broadcast::all_tokio(&mut broker_streams[..], &message).await
     }
 
     // Will return the name of created topic on success
@@ -251,7 +253,7 @@ impl DistributionManager {
     }
 
     // Need to rebalance if new partition is added to the broker
-    pub fn create_partition(&mut self, topic_name: &str) -> Result<String, String> {
+    pub async fn create_partition(&mut self, topic_name: &str) -> Result<String, String> {
         let mut brokers_lock = self.brokers.lock().unwrap();
 
         if brokers_lock.len() == 0 {
@@ -286,12 +288,13 @@ impl DistributionManager {
                 &mut brokers_lock,
                 replica_factor as usize,
                 &partition,
-            )?;
+            )
+            .await?;
 
             // Releaseing lock for broadcast_cluster_metadata
             drop(brokers_lock);
 
-            self.broadcast_cluster_metadata()?;
+            self.broadcast_cluster_metadata().await?;
 
             Ok(partition.id.clone())
 
@@ -301,12 +304,12 @@ impl DistributionManager {
         }
     }
 
-    fn get_broker_metadata(
+    async fn get_broker_metadata(
         &self,
-        mut stream: TcpStream,
-    ) -> Result<(String, String, TcpStream), String> {
+        mut stream: tokio::net::TcpStream,
+    ) -> Result<(String, String, tokio::net::TcpStream), String> {
         if let Message::BrokerConnectionDetails { id, addr } =
-            Reader::read_one_message(&mut stream)?
+            Reader::read_one_message_tokio(&mut stream).await?
         {
             Ok((id, addr, stream))
         } else {
@@ -321,8 +324,6 @@ impl DistributionManager {
     // TODO: What happens when a broker has lost connection? We need to find a new leader for all partition leaders.
     fn spawn_broker_reader(&self, broker: &Broker) -> Result<(), String> {
         if let Some(broker_stream) = &broker.stream {
-            let watch_stream = broker_stream.try_clone().map_err(|e| e.to_string())?;
-
             let brokers = Arc::clone(&self.brokers);
             let broker_id = broker.id.clone();
 
@@ -331,12 +332,15 @@ impl DistributionManager {
                 .get_number("throttle")
                 .ok_or("Throttle is missing form the configuration file.")?;
 
-            std::thread::spawn(move || {
-                let mut reader = BufReader::new(watch_stream);
+            let task_broker_stream = broker_stream.clone();
+
+            tokio::spawn(async move {
                 let mut buf = String::with_capacity(1024);
 
                 loop {
-                    let size = match reader.read_line(&mut buf) {
+                    let stream = task_broker_stream.lock().await;
+
+                    let size = match stream.read_line(&mut buf).await {
                         Ok(s) => s,
                         Err(e) => {
                             println!("Error in broker read thread: {}", e);
@@ -345,6 +349,8 @@ impl DistributionManager {
                             continue;
                         }
                     };
+
+                    drop(stream);
 
                     // TODO: Think what should happen to the metadata of the broker that has been disconnected.
                     if size == 0 {
@@ -380,6 +386,7 @@ impl DistributionManager {
                     buf.clear();
                 }
             });
+
             Ok(())
         } else {
             println!("Ignoring spawning broker reader as Observer follower");
@@ -388,13 +395,14 @@ impl DistributionManager {
     }
 }
 
-pub fn broadcast_replicate_partition(
+pub async fn broadcast_replicate_partition(
     broker: &mut Broker,
     replica: &mut Partition,
 ) -> Result<(), String> {
     if let Some(broker_stream) = &mut broker.stream {
-        Broadcast::to(
-            broker_stream,
+        let mut stream = broker_stream.lock().await;
+        Broadcast::to_tokio(
+            &mut stream,
             &Message::CreatePartition {
                 id: replica.id.clone(),
                 replica_id: replica.replica_id.clone(),
@@ -402,7 +410,8 @@ pub fn broadcast_replicate_partition(
                 partition_number: replica.partition_number,
                 replica_count: replica.replica_count,
             },
-        )?;
+        )
+        .await?;
     } else {
         println!("Ignoring broadcasting message as Observer follower")
     }
@@ -413,13 +422,13 @@ pub fn broadcast_replicate_partition(
     Ok(())
 }
 
-fn replicate_pending_partitions_once(
+async fn replicate_pending_partitions_once(
     pending_replication_partitions: &mut Vec<(usize, Partition)>,
     new_broker: &mut Broker,
 ) -> Result<(), String> {
     for (replications_needed, partition) in pending_replication_partitions.iter_mut().rev() {
         let mut replica = Partition::replicate(partition, partition.replica_count + 1);
-        broadcast_replicate_partition(new_broker, &mut replica)?;
+        broadcast_replicate_partition(new_broker, &mut replica).await?;
         new_broker.partitions.push(replica);
         partition.replica_count += 1;
         *replications_needed -= 1;
@@ -445,7 +454,7 @@ fn replicate_pending_partitions_once(
     Ok(())
 }
 
-fn replicate_partition(
+async fn replicate_partition(
     pending_replication_partitions: &mut Vec<(usize, Partition)>,
     brokers_lock: &mut MutexGuard<'_, Vec<Broker>>,
     replica_factor: usize,
@@ -472,7 +481,7 @@ fn replicate_partition(
     for replica_count in 1..=current_max_replications {
         let least_distributed_broker = get_least_distributed_broker(brokers_lock, partition)?;
         let mut replica = Partition::replicate(partition, replica_count);
-        broadcast_replicate_partition(least_distributed_broker, &mut replica)?;
+        broadcast_replicate_partition(least_distributed_broker, &mut replica).await?;
         least_distributed_broker.partitions.push(replica);
     }
 
@@ -506,339 +515,5 @@ fn get_least_distributed_broker<'a>(
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, io::Write, net::TcpListener};
-
-    use uuid::Uuid;
-
     use super::*;
-
-    fn cleanup_after_test(custom_test_name: &str) {
-        let mut custom_path = PathBuf::new();
-        custom_path.push("/observer/");
-        custom_path.push(custom_test_name);
-
-        let test_files_path = DirManager::get_base_dir(Some(&custom_path)).unwrap();
-        match fs::remove_dir_all(&test_files_path) {
-            Ok(_) => {
-                println!("Deleted {:?}", test_files_path)
-            }
-
-            Err(e) => println!("Could not delete {:?} | {}", test_files_path, e),
-        }
-    }
-
-    fn config_mock() -> Config {
-        Config::from("../config/dev.properties".into()).unwrap()
-    }
-
-    fn get_custom_test_name() -> String {
-        format!("test_{}", Uuid::new_v4().to_string())
-    }
-
-    fn bootstrap_distribution_manager(
-        config: Option<Config>,
-        custom_test_name: &str,
-    ) -> Arc<Mutex<DistributionManager>> {
-        let config = if let Some(config) = config {
-            config
-        } else {
-            config_mock()
-        };
-
-        let distribution_manager: Arc<Mutex<DistributionManager>> =
-            DistributionManager::from(config, Some(&custom_test_name.to_string())).unwrap();
-
-        distribution_manager
-    }
-
-    fn mock_connecting_broker(addr: &str) -> TcpStream {
-        let mut mock_stream = TcpStream::connect(addr).unwrap();
-
-        let mut payload = serde_json::to_string(&Message::BrokerConnectionDetails {
-            id: uuid::Uuid::new_v4().to_string(),
-            addr: "localhost:123123".to_string(),
-        })
-        .unwrap();
-        payload.push('\n');
-        mock_stream.write(payload.as_bytes()).unwrap();
-
-        let read_stream = mock_stream.try_clone().unwrap();
-
-        std::thread::spawn(|| {
-            let mut reader = BufReader::new(read_stream);
-            let mut buf = String::with_capacity(1024);
-
-            loop {
-                let size = reader.read_line(&mut buf).unwrap();
-
-                println!("{}", buf);
-
-                if size == 0 {
-                    break;
-                }
-
-                buf.clear();
-            }
-        });
-
-        mock_stream
-    }
-
-    fn setup_distribution_for_tests(
-        config: Config,
-        port: &str,
-        custom_test_name: &str,
-    ) -> Arc<Mutex<DistributionManager>> {
-        let distribution_manager = bootstrap_distribution_manager(Some(config), &custom_test_name);
-        let mut distribution_manager_lock = distribution_manager.lock().unwrap();
-
-        let addr = format!("localhost:{}", port);
-        let listener = TcpListener::bind(&addr).unwrap();
-
-        // Create 3 brokers to test the balancing of created partitions
-        mock_connecting_broker(&addr);
-        mock_connecting_broker(&addr);
-        mock_connecting_broker(&addr);
-
-        // Simulate acceptence of brokers
-        for _ in 0..3 {
-            let stream = listener.incoming().next().unwrap().unwrap();
-            distribution_manager_lock.connect_broker(stream).unwrap();
-        }
-
-        drop(distribution_manager_lock);
-
-        distribution_manager
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn create_brokers_works_as_expected() {
-        let custom_test_name = get_custom_test_name();
-        let distribution_manager = bootstrap_distribution_manager(None, &custom_test_name);
-        let mut distribution_manager_lock = distribution_manager.lock().unwrap();
-
-        let addr = "localhost:0";
-        let listener = TcpListener::bind(addr).unwrap();
-
-        let connection_addr = format!("localhost:{}", listener.local_addr().unwrap().port());
-
-        let spawned_thread = std::thread::spawn(move || {
-            let (stream, _) = listener.accept().unwrap();
-            stream
-        });
-
-        mock_connecting_broker(&connection_addr);
-
-        let stream = spawned_thread.join().unwrap();
-
-        let result = distribution_manager_lock.connect_broker(stream);
-
-        println!("{:?}", result);
-
-        assert!(result.is_ok());
-
-        cleanup_after_test(&custom_test_name);
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn create_topic_fails_when_no_brokers() {
-        let custom_test_name = get_custom_test_name();
-        let distribution_manager = bootstrap_distribution_manager(None, &custom_test_name);
-        let mut distribution_manager_lock = distribution_manager.lock().unwrap();
-
-        let topic_name = "new_user_registered";
-
-        // Before
-        let result = distribution_manager_lock
-            .create_topic(topic_name)
-            .unwrap_err();
-
-        assert!(result.contains("No brokers have been found"));
-
-        cleanup_after_test(&custom_test_name);
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn create_topic_works_as_expected_when_brokers_exist() {
-        let custom_test_name = get_custom_test_name();
-
-        let config = config_mock();
-
-        // After brokers have connnected to the Observer
-        let distribution_manager = setup_distribution_for_tests(config, "5001", &custom_test_name);
-        let mut distribution_manager_lock = distribution_manager.lock().unwrap();
-
-        let topic_name = "new_user_registered";
-
-        let topics_count_before_add = distribution_manager_lock.topics.iter().count();
-
-        distribution_manager_lock.create_topic(topic_name).unwrap();
-
-        let topic_count_after_add = distribution_manager_lock.topics.iter().count();
-
-        assert_eq!(topic_count_after_add, topics_count_before_add + 1);
-
-        // We cant add the same topic name twice - Should error
-        let result = distribution_manager_lock
-            .create_topic(topic_name)
-            .unwrap_err();
-
-        assert!(result.contains("already exist."));
-
-        let topics_count_before_add = distribution_manager_lock.topics.iter().count();
-
-        let another_topic_name = "notification_resent";
-
-        distribution_manager_lock
-            .create_topic(another_topic_name)
-            .unwrap();
-
-        let topic_count_after_add = distribution_manager_lock.topics.iter().count();
-
-        assert_eq!(topic_count_after_add, topics_count_before_add + 1);
-
-        let last_element_in_topics = distribution_manager_lock
-            .topics
-            .last()
-            .unwrap()
-            .lock()
-            .unwrap();
-
-        assert_eq!(last_element_in_topics.name, another_topic_name);
-
-        cleanup_after_test(&custom_test_name);
-    }
-
-    fn get_brokers_with_replicas(
-        brokers_lock: &MutexGuard<'_, Vec<Broker>>,
-        partition_id: &str,
-    ) -> usize {
-        brokers_lock
-            .iter()
-            .filter(|b| b.partitions.iter().find(|p| p.id == partition_id).is_some())
-            .count()
-    }
-
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn create_partition_distributes_replicas() {
-        let custom_test_name = get_custom_test_name();
-        let config = config_mock();
-
-        let replica_factor = config.get_number("replica_factor").unwrap();
-
-        let distribution_manager = setup_distribution_for_tests(config, "5002", &custom_test_name);
-        let mut distribution_manager_lock = distribution_manager.lock().unwrap();
-
-        let notifications_topic = "notifications";
-
-        // Create 'notifications' topic
-        distribution_manager_lock
-            .create_topic(notifications_topic)
-            .unwrap();
-
-        // First partition for topic 'notifications'
-        let partition_id_1 = distribution_manager_lock
-            .create_partition(notifications_topic)
-            .unwrap();
-
-        let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
-        let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_1);
-        assert_eq!(total_brokers_with_replicas, replica_factor as usize);
-        drop(brokers_lock);
-
-        // Second partition for topic 'notifications'
-        let partition_id_2 = distribution_manager_lock
-            .create_partition(notifications_topic)
-            .unwrap();
-
-        let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
-        let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_2);
-        assert_eq!(total_brokers_with_replicas, replica_factor as usize);
-        drop(brokers_lock);
-
-        let comments_topic = "comments";
-
-        // Create 'comments' topic
-        distribution_manager_lock
-            .create_topic(comments_topic)
-            .unwrap();
-
-        // First partition for topic 'comments'
-        let partition_id_3 = distribution_manager_lock
-            .create_partition(comments_topic)
-            .unwrap();
-
-        let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
-        let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_3);
-        assert_eq!(total_brokers_with_replicas, replica_factor as usize);
-        drop(brokers_lock);
-
-        // Second partition for topic 'comments'
-        let partition_id_4 = distribution_manager_lock
-            .create_partition(comments_topic)
-            .unwrap();
-
-        let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
-        let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_4);
-        assert_eq!(total_brokers_with_replicas, replica_factor as usize);
-        drop(brokers_lock);
-
-        let friend_requests_topic = "friend_requests";
-
-        // Create 'friend_requests' topic
-        distribution_manager_lock
-            .create_topic(friend_requests_topic)
-            .unwrap();
-
-        // First partition for topic 'friend_requests'
-        let partition_id_5 = distribution_manager_lock
-            .create_partition("friend_requests")
-            .unwrap();
-
-        let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
-        let total_brokers_with_replicas = get_brokers_with_replicas(&brokers_lock, &partition_id_5);
-        assert_eq!(total_brokers_with_replicas, replica_factor as usize);
-        drop(brokers_lock);
-
-        let mut unique_partitions = distribution_manager_lock
-            .brokers
-            .lock()
-            .unwrap()
-            .iter()
-            .flat_map(|b| b.partitions.clone())
-            .collect::<Vec<_>>();
-
-        unique_partitions.dedup_by_key(|p| p.id.clone());
-
-        println!("PARTITIONS: {:#?}", unique_partitions);
-
-        let total_replicas_in_brokers: usize = distribution_manager_lock
-            .brokers
-            .lock()
-            .unwrap()
-            .iter()
-            .map(|b| b.partitions.len())
-            .sum();
-
-        assert_eq!(unique_partitions.len(), total_replicas_in_brokers);
-
-        // Testing that all brokers have the same amount of partition replicas (meaning it was balanced well - max fault tolerence)
-        let brokers_lock = distribution_manager_lock.brokers.lock().unwrap();
-
-        if let Some((first, other)) = brokers_lock.split_first() {
-            for broker in other {
-                assert_eq!(first.partitions.len(), broker.partitions.len());
-            }
-        }
-
-        drop(brokers_lock);
-
-        println!("{:#?}", distribution_manager_lock.brokers);
-
-        cleanup_after_test(&custom_test_name);
-    }
 }

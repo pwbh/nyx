@@ -2,10 +2,7 @@ pub mod command_processor;
 pub mod config;
 pub mod distribution_manager;
 
-use std::{
-    net::TcpListener,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 use command_processor::CommandProcessor;
 use config::Config;
@@ -24,14 +21,14 @@ pub const CLUSTER_FILE: &str = "cluster.json";
 pub struct Observer {
     pub id: String,
     pub role: Role,
-    pub listener: TcpListener,
+    pub listener: tokio::net::TcpListener,
     pub distribution_manager: Arc<Mutex<DistributionManager>>,
     pub command_processor: CommandProcessor,
     pub system: System,
 }
 
 impl Observer {
-    pub fn from(
+    pub async fn from(
         config_path: &str,
         leader: Option<&String>,
         name: Option<&String>,
@@ -58,7 +55,9 @@ impl Observer {
 
         let host = format!("localhost:{}", port);
 
-        let listener = TcpListener::bind(host).map_err(|e| e.to_string())?;
+        let listener = tokio::net::TcpListener::bind(host)
+            .await
+            .map_err(|e| e.to_string())?;
 
         system.refresh_all();
 

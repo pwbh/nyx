@@ -1,30 +1,32 @@
-use std::{io::BufReader, net::TcpStream};
+use std::sync::Arc;
 
 use shared_structures::Status;
+use tokio::sync::Mutex;
 
 use super::partition::Partition;
 
 #[derive(Debug)]
 pub struct Broker {
     pub id: String,
-    pub stream: Option<TcpStream>,
     pub partitions: Vec<Partition>,
-    pub reader: Option<BufReader<TcpStream>>,
+    pub stream: Option<Arc<Mutex<tokio::io::BufReader<tokio::net::TcpStream>>>>,
     pub status: Status,
     pub addr: String,
 }
 
 impl Broker {
-    pub fn from(id: String, stream: Option<TcpStream>, addr: String) -> Result<Self, String> {
+    pub fn from(
+        id: String,
+        stream: Option<tokio::net::TcpStream>,
+        addr: String,
+    ) -> Result<Self, String> {
         if let Some(stream) = stream {
-            let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
-            let reader = BufReader::new(read_stream);
+            let stream = tokio::io::BufReader::new(stream);
 
             Ok(Self {
                 id,
                 partitions: vec![],
-                stream: Some(stream),
-                reader: Some(reader),
+                stream: Some(Arc::new(Mutex::new(stream))),
                 status: Status::Up,
                 addr,
             })
@@ -33,20 +35,17 @@ impl Broker {
                 id,
                 partitions: vec![],
                 stream: None,
-                reader: None,
                 status: Status::Up,
                 addr,
             })
         }
     }
 
-    pub fn restore(&mut self, stream: TcpStream, addr: String) -> Result<(), String> {
-        let read_stream = stream.try_clone().map_err(|e| e.to_string())?;
-        let reader = BufReader::new(read_stream);
+    pub fn restore(&mut self, stream: tokio::net::TcpStream, addr: String) -> Result<(), String> {
+        let stream = tokio::io::BufReader::new(stream);
 
         self.status = Status::Up;
-        self.stream = Some(stream);
-        self.reader = Some(reader);
+        self.stream = Some(Arc::new(Mutex::new(stream)));
         self.addr = addr;
 
         for partition in self.partitions.iter_mut() {

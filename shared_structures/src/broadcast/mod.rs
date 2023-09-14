@@ -1,5 +1,7 @@
 use std::{io::Write, net::TcpStream};
 
+use tokio::io::AsyncWriteExt;
+
 use crate::Message;
 
 pub struct Broadcast;
@@ -25,6 +27,52 @@ impl Broadcast {
         Ok(())
     }
 
+    pub async fn all_tokio<W: tokio::io::AsyncWriteExt + std::marker::Unpin>(
+        streams: &mut [&mut W],
+        message: &Message,
+    ) -> Result<(), String> {
+        let mut payload = serde_json::to_string(message)
+            .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
+
+        payload.push('\n');
+
+        for stream in streams.iter_mut() {
+            let bytes_written = stream
+                .write(payload.as_bytes())
+                .await
+                .map_err(|e| e.to_string())?;
+
+            if bytes_written == 0 {
+                return Err(
+                    "0 bytes have been written, might be an error, please create a new issue in nyx repository.".to_string()
+                );
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn to_tokio<W: tokio::io::AsyncWriteExt + std::marker::Unpin>(
+        stream: &mut W,
+        message: &Message,
+    ) -> Result<(), String> {
+        let mut payload = serde_json::to_string(message)
+            .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
+
+        payload.push('\n');
+
+        let bytes_written = stream
+            .write(payload.as_bytes())
+            .await
+            .map_err(|e| e.to_string())?;
+
+        println!("Message broadcasted with {} bytes", bytes_written);
+
+        if bytes_written == 0 {
+            return Err("0 bytes have been written, might be an error, please create a new issue in nyx repository.".to_string());
+        }
+
+        Ok(())
+    }
     pub fn to(stream: &mut TcpStream, message: &Message) -> Result<(), String> {
         let mut payload = serde_json::to_string(message)
             .map_err(|_| "Couldn't serialize the data structure to send.".to_string())?;
