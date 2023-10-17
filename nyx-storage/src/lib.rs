@@ -88,3 +88,8 @@ impl Storage {
         return Ok(&self.retrivable_buffer[..data_size]);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+}
