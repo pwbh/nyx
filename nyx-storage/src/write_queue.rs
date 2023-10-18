@@ -1,19 +1,47 @@
-use std::io;
+use std::{
+    io::{self, SeekFrom},
+    sync::Arc,
+};
 
-use async_std::{channel::Receiver, fs::OpenOptions, io::WriteExt, path::Path};
+use async_std::{
+    channel::Receiver,
+    fs::File,
+    io::{prelude::SeekExt, WriteExt},
+};
 
-pub struct WriteQueue;
+pub struct WriteQueue {
+    file: Arc<File>,
+    current_last_byte: usize,
+}
 
 impl WriteQueue {
-    pub async fn run(queue: Receiver<Vec<u8>>, path: &Path) -> io::Result<()> {
-        let mut data_file = OpenOptions::new().append(true).open(path).await?;
+    pub async fn new(file: Arc<File>) -> io::Result<Self> {
+        let mut file_ref = &*file;
+        file_ref.seek(SeekFrom::End(0)).await?;
 
-        data_file.write_all(b"I am trying to write").await?;
+        Ok(Self {
+            file,
+            current_last_byte: 0,
+        })
+    }
+
+    async fn write(&mut self, buf: &[u8]) -> io::Result<()> {
+        let mut file = &*self.file;
+        let n = file.write(buf).await?;
+        self.current_last_byte += n;
+        file.seek(SeekFrom::End(0)).await?;
+        Ok(())
+    }
+
+    pub async fn run(queue: Receiver<Vec<u8>>, file: Arc<File>) -> io::Result<()> {
+        let mut write_queue = Self::new(file).await?;
 
         while let Ok(data) = queue.recv().await {
-            println!("Do something with received data: {:?}", data);
+            write_queue.write(&data[..]).await?;
         }
 
         Ok(())
     }
+
+    // pub
 }

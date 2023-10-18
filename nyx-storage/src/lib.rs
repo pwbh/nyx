@@ -18,10 +18,14 @@ mod offsets;
 mod storage_sender;
 mod write_queue;
 
+pub mod directory;
+
 use offsets::Offsets;
 
+/// NOTE: Each partition of a topic should have Storage struct
 pub struct Storage {
     indices: HashMap<usize, Offsets>,
+    max_index: usize,
     file: Arc<File>,
     // TODO: When Storage will be accessed concurrently each concurrent accessor should have a
     // `retrievable_buffer` of its own to read into instead.
@@ -32,13 +36,16 @@ pub struct Storage {
 
 impl Storage {
     pub async fn new(path: &'static Path, max_queue: usize) -> Result<Self, String> {
+        let file = Arc::new(File::open(path).await.map_err(|e| e.to_string())?);
         let (write_sender, write_receiver) = bounded(max_queue);
 
-        let write_queue_handle = async_std::task::spawn(WriteQueue::run(write_receiver, &path));
+        let write_queue_handle =
+            async_std::task::spawn(WriteQueue::run(write_receiver, file.clone()));
 
         Ok(Self {
             indices: HashMap::new(),
-            file: Arc::new(File::open(path).await.map_err(|e| e.to_string())?),
+            max_index: 0,
+            file,
             retrivable_buffer: [0; 8192],
             write_sender,
             write_queue_handle,
@@ -50,6 +57,14 @@ impl Storage {
     }
 
     pub async fn get(&mut self, index: usize) -> Result<&[u8], String> {
+        if index >= self.max_index {
+            return Err(format!(
+                "Request data at index {} but max index is {}",
+                index,
+                self.max_index - 1
+            ));
+        }
+
         let offsets = self
             .indices
             .get(&index)
@@ -92,4 +107,9 @@ impl Storage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn create_storage_instance() {
+        //   let storage = Storage::new();
+    }
 }
