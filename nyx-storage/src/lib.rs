@@ -8,9 +8,9 @@ use async_std::{
     channel::{bounded, Sender},
     fs::File,
     io::{prelude::SeekExt, ReadExt, SeekFrom},
-    path::Path,
     task::JoinHandle,
 };
+use directory::Directory;
 use storage_sender::StorageSender;
 use write_queue::WriteQueue;
 
@@ -22,27 +22,32 @@ pub mod directory;
 
 use offsets::Offsets;
 
+const BUFFER_MAX_SIZE: usize = 8192;
+
 /// NOTE: Each partition of a topic should have Storage struct
 pub struct Storage {
+    directory: Directory,
     indices: HashMap<usize, Offsets>,
     max_index: usize,
     file: Arc<File>,
     // TODO: When Storage will be accessed concurrently each concurrent accessor should have a
     // `retrievable_buffer` of its own to read into instead.
-    retrivable_buffer: [u8; 8192],
+    retrivable_buffer: [u8; BUFFER_MAX_SIZE],
     write_sender: Sender<Vec<u8>>,
     write_queue_handle: JoinHandle<Result<(), std::io::Error>>,
 }
 
 impl Storage {
-    pub async fn new(path: &'static Path, max_queue: usize) -> Result<Self, String> {
-        let file = Arc::new(File::open(path).await.map_err(|e| e.to_string())?);
+    pub async fn new(title: &str, max_queue: usize) -> Result<Self, String> {
+        let directory = Directory::new(title).await?;
+        let file = Arc::new(directory.open(title).await?);
         let (write_sender, write_receiver) = bounded(max_queue);
 
         let write_queue_handle =
             async_std::task::spawn(WriteQueue::run(write_receiver, file.clone()));
 
         Ok(Self {
+            directory,
             indices: HashMap::new(),
             max_index: 0,
             file,

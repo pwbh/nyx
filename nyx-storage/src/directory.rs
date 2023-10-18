@@ -1,114 +1,130 @@
-use std::{
-    fmt::Debug,
-    fs::{self},
-    path::PathBuf,
-};
+use std::{fmt::Debug, io::ErrorKind};
+
+use async_std::fs::File;
+
+const NYX_BASE_PATH: &'static str = "nyx";
 
 #[derive(Debug, Default)]
 pub struct Directory {
-    custom_dir: Option<PathBuf>,
-    title: String,
+    base_path: String,
 }
 
+// Path example: nyx/title/filename
+
+/// Directory is used to manage the internal creation and opening of the files.
 impl Directory {
-    /// Creates a managed directory in the predefined path of the root directory for Nyx.   
-    pub fn new(title: &str) -> Self {
-        Self {
-            custom_dir: None,
-            title: title.to_owned(),
-        }
-    }
+    pub async fn new(title: &str) -> Result<Self, String> {
+        let dir = Self {
+            base_path: format!("{}/{}", NYX_BASE_PATH, title),
+        };
 
-    /// Create a managed directory in the predefined path of the root directory
-    /// for Nyx at specified custom directory `custom_dir`, this manager can then perform
-    /// different fs actions such as opening a file in the directory, saving the file to the directory,
-    /// and creating empty files in the directory safely in the context
-    /// of the directory it was created in.
-    ///
-    /// when creating a Directory by passing `custom_dir` the Directory will still
-    /// work in the context of the Nyx foder.
-    pub fn with_dir(title: &str, custom_dir: Option<&PathBuf>) -> Self {
-        Self {
-            custom_dir: custom_dir.cloned(),
-            title: title.to_owned(),
-        }
-    }
+        let full_base_path = dir.get_full_base_path()?;
 
-    pub fn create(&self, path: &str) -> Result<PathBuf, String> {
-        let project_dir = self.get_base_dir(self.custom_dir.as_ref())?;
-        let project_dir_str = project_dir
-            .to_str()
-            .ok_or("Failed while validating UTF-8 string integrity.")?;
-        let total_path = format!("{}/{}", project_dir_str, path);
-        match fs::create_dir_all(&total_path) {
+        match async_std::fs::create_dir_all(&full_base_path).await {
             Ok(_) => {}
-            Err(e) => {
-                println!("Directory -> create func error: {}", e)
-            }
+            Err(e) => match e.kind() {
+                ErrorKind::AlreadyExists => {}
+                _ => return Err(format!("Couldn't create directory: {}", e)),
+            },
         };
-        Ok(total_path.into())
+
+        Ok(dir)
     }
 
-    fn get_filepath(&self, path: &str, custom_path: Option<&PathBuf>) -> Result<PathBuf, String> {
-        let dir = self.get_base_dir(custom_path)?;
-        let dir_str = dir
-            .to_str()
-            .ok_or("Not valid UTF-8 string has been passed.".to_string())?;
-
-        let filepath = format!("{}/{}", dir_str, path);
-        Ok(filepath.into())
-    }
-
-    pub fn get_base_dir(&self, custom_path: Option<&PathBuf>) -> Result<PathBuf, String> {
-        let final_path = if let Some(custom_path) = custom_path {
-            let dist = custom_path
-                .clone()
-                .to_str()
-                .ok_or("Invalid format provided for the directory")?
-                .to_string();
-            format!("{}/{}", self.title, dist)
+    pub fn with_dir(title: &str, custom_path: Option<&str>) -> Self {
+        let base_path = if let Some(custom_path) = custom_path {
+            format!("{}/{}", title, custom_path)
         } else {
-            self.title.clone()
+            title.to_owned()
         };
 
-        let mut final_dir: Option<PathBuf> = None;
+        Self { base_path }
+    }
+
+    fn get_full_base_path(&self) -> Result<String, String> {
+        let mut final_dir = Some(String::new());
+
+        let base_path = self.base_path.clone();
 
         // Unix-based machines
         if let Ok(home_dir) = std::env::var("HOME") {
-            let config_dir = format!("{}/.config/{}", home_dir, final_path);
-            final_dir = Some(config_dir.into());
+            let config_dir = format!("{}/.config/{}", home_dir, base_path);
+            final_dir = Some(config_dir);
         }
         // Windows based machines
         else if let Ok(user_profile) = std::env::var("USERPROFILE") {
-            let config_dir = format!(r"{}/AppData/Roaming/{}", user_profile, final_path);
-            final_dir = Some(config_dir.into());
+            let config_dir = format!(r"{}/AppData/Roaming/{}", user_profile, base_path);
+            final_dir = Some(config_dir);
         }
 
         final_dir.ok_or("Couldn't get the systems home directory. Please setup a HOME env variable and pass your system's home directory there.".to_string())
+    }
+
+    fn get_file_path(&self, filename: &str) -> Result<String, String> {
+        let full_base_path = self.get_full_base_path()?;
+        Ok(format!("{}/{}", full_base_path, filename))
+    }
+
+    pub async fn open(&self, filename: &str) -> Result<File, String> {
+        let file_path = self.get_file_path(filename)?;
+        File::open(file_path)
+            .await
+            .map_err(|e| format!("Directory: {}", e))
+    }
+
+    pub async fn create(&self, filename: &str) -> Result<File, String> {
+        let file_path = self.get_file_path(filename)?;
+        File::create(file_path)
+            .await
+            .map_err(|e| format!("Directory: {}", e))
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::io::Error;
+
     use super::*;
 
-    #[test]
-    #[cfg_attr(miri, ignore)]
-    fn get_local_metadata_directory_returns_dir_as_expected() {
-        let dir = Directory::new("nyx-storage");
-        let dir_path = dir.get_base_dir(None).unwrap();
-        assert!(dir_path.to_str().unwrap().contains("nyx"));
+    async fn remove_test_file(dir: &Directory, filename: &str) -> Result<(), Error> {
+        let filepath = dir.get_file_path(filename).unwrap();
+        async_std::fs::remove_file(filepath).await
     }
 
-    #[test]
+    #[async_std::test]
     #[cfg_attr(miri, ignore)]
-    fn get_local_metadata_filepath_returns_filepath_as_expected() {
-        let dir = Directory::new("nyx-storage");
-        let filepath = dir.get_filepath("metadata.json", None).unwrap();
-        println!("{:?}", filepath);
-        assert!(filepath
-            .to_str()
-            .unwrap()
-            .contains("nyx-storage/metadata.json"));
+    async fn create() {
+        let dir = Directory::new("events-replica-1").await.unwrap();
+        let create_file_result = dir.create("topic_name_1.data").await;
+
+        assert!(create_file_result.is_ok());
+
+        let remove_test_file_result = remove_test_file(&dir, "topic_name_1.data").await;
+
+        assert!(remove_test_file_result.is_ok());
+    }
+
+    #[async_std::test]
+    #[cfg_attr(miri, ignore)]
+    async fn open_when_file_not_exists_should_error() {
+        let dir = Directory::new("events-replica-1").await.unwrap();
+        let file_result = dir.open("topic_doesnt_exist.data").await;
+
+        assert!(file_result.is_err());
+    }
+
+    #[async_std::test]
+    #[cfg_attr(miri, ignore)]
+    async fn open_when_file_exists_should_ok() {
+        let dir = Directory::new("events-replica-1").await.unwrap();
+        let create_file_result = dir.create("topic_name.data").await;
+        let open_file_result = dir.open("topic_name.data").await;
+
+        assert!(create_file_result.is_ok());
+        assert!(open_file_result.is_ok());
+
+        let remove_test_file_result = remove_test_file(&dir, "topic_name.data").await;
+
+        assert!(remove_test_file_result.is_ok());
     }
 }
