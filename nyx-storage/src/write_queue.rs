@@ -89,8 +89,8 @@ mod tests {
             assert!(append_result.is_ok());
         }
 
-        // let cleanup_result = cleanup_test_file(&test_file_path).await;
+        let cleanup_result = cleanup_test_file(&test_file_path).await;
 
-        // assert!(cleanup_result.is_ok());
+        assert!(cleanup_result.is_ok());
     }
 }
