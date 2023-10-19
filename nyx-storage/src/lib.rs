@@ -14,6 +14,7 @@ use directory::Directory;
 use storage_sender::StorageSender;
 use write_queue::WriteQueue;
 
+mod macros;
 mod offsets;
 mod storage_sender;
 mod write_queue;
@@ -40,7 +41,8 @@ pub struct Storage {
 impl Storage {
     pub async fn new(title: &str, max_queue: usize) -> Result<Self, String> {
         let directory = Directory::new(title).await?;
-        let file = Arc::new(directory.open(title).await?);
+        let filename = format!("{}.data", title);
+        let file = Arc::new(directory.open(&filename).await?);
         let (write_sender, write_receiver) = bounded(max_queue);
 
         let write_queue_handle =
