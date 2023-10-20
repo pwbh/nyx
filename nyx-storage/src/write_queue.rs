@@ -58,6 +58,7 @@ mod tests {
     }
 
     #[async_std::test]
+    #[cfg_attr(miri, ignore)]
     async fn write_queue_instance_new_ok() {
         let test_file_path = format!("./{}.data", function!());
 
@@ -72,6 +73,7 @@ mod tests {
     }
 
     #[async_std::test]
+    #[cfg_attr(miri, ignore)]
     async fn append() {
         let test_file_path = format!("./{}.data", function!());
 

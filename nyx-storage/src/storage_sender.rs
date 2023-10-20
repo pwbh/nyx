@@ -24,6 +24,7 @@ mod tests {
     use super::*;
 
     #[async_std::test]
+    #[cfg_attr(miri, ignore)]
     async fn create_storage_sender_and_send() {
         let (sender, receiver) = bounded::<Vec<u8>>(1);
         let payload = b"testing storage sender";
