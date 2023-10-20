@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     io::{self},
     sync::Arc,
 };
@@ -8,12 +7,15 @@ use async_std::{
     channel::{bounded, Sender},
     fs::File,
     io::{prelude::SeekExt, ReadExt, SeekFrom},
+    sync::Mutex,
     task::JoinHandle,
 };
 use directory::Directory;
+use indices::Indices;
 use storage_sender::StorageSender;
 use write_queue::WriteQueue;
 
+mod indices;
 mod macros;
 mod offsets;
 mod storage_sender;
@@ -21,15 +23,13 @@ mod write_queue;
 
 pub mod directory;
 
-use offsets::Offsets;
-
 const BUFFER_MAX_SIZE: usize = 8192;
 
 /// NOTE: Each partition of a topic should have Storage struct
+#[derive(Debug)]
 pub struct Storage {
     directory: Directory,
-    indices: HashMap<usize, Offsets>,
-    max_index: usize,
+    indices: Arc<Mutex<Indices>>,
     file: Arc<File>,
     // TODO: When Storage will be accessed concurrently each concurrent accessor should have a
     // `retrievable_buffer` of its own to read into instead.
@@ -40,18 +40,22 @@ pub struct Storage {
 
 impl Storage {
     pub async fn new(title: &str, max_queue: usize) -> Result<Self, String> {
+        let indices = Indices::new();
         let directory = Directory::new(title).await?;
         let filename = format!("{}.data", title);
         let file = Arc::new(directory.open(&filename).await?);
+
         let (write_sender, write_receiver) = bounded(max_queue);
 
-        let write_queue_handle =
-            async_std::task::spawn(WriteQueue::run(write_receiver, file.clone()));
+        let write_queue_handle = async_std::task::spawn(WriteQueue::run(
+            indices.clone(),
+            write_receiver,
+            file.clone(),
+        ));
 
         Ok(Self {
             directory,
-            indices: HashMap::new(),
-            max_index: 0,
+            indices,
             file,
             retrivable_buffer: [0; 8192],
             write_sender,
@@ -64,18 +68,22 @@ impl Storage {
     }
 
     pub async fn get(&mut self, index: usize) -> Result<&[u8], String> {
-        if index >= self.max_index {
-            return Err(format!(
-                "Request data at index {} but max index is {}",
-                index,
-                self.max_index - 1
-            ));
+        // TODO: Think of a better way to do this, maybe able to get rid of the lock somehow
+        // and still be safe.
+        let indices = self.indices.lock().await;
+        let length = indices.length;
+
+        if index >= length {
+            return Err(format!("Out of bounds requested data at index {}", index));
         }
 
-        let offsets = self
-            .indices
+        let offsets = indices
+            .data
             .get(&index)
+            .map(|v| v.clone())
             .ok_or("record doesn't exist.".to_string())?;
+
+        drop(indices);
 
         let data_size = offsets.end() - offsets.start();
 
@@ -101,22 +109,45 @@ impl Storage {
             // Theoratically should never get here
             panic!("Got 0 bytes in file read")
         };
-        self.rewind().await?;
-        return Ok(&self.retrivable_buffer[..data_size]);
-    }
 
-    async fn rewind(&mut self) -> io::Result<u64> {
-        let mut file = &*self.file;
-        file.seek(SeekFrom::Start(0)).await
+        return Ok(&self.retrivable_buffer[..data_size]);
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
-    #[test]
-    fn create_storage_instance() {
-        //   let storage = Storage::new();
+    async fn simulate_message_send(storage: &mut Storage, message: &str) -> Result<(), String> {
+        let mut sender = storage.get_storage_sender();
+        sender.send(message.as_bytes()).await
+    }
+
+    #[async_std::test]
+    async fn create_storage_instance() {
+        // (l)eader/(r)eplica_topic-name_partition-count
+        let storage = Storage::new("TEST_l_reservations_1", 10_000).await;
+
+        assert!(storage.is_ok());
+    }
+
+    #[async_std::test]
+    async fn get() {
+        let test_message = "hello world";
+
+        let mut storage = Storage::new("TEST_l_reservations_2", 10_000).await.unwrap();
+        let send_result = simulate_message_send(&mut storage, test_message).await;
+
+        assert!(send_result.is_ok());
+
+        // wait for the message to arrive to queue
+        async_std::task::sleep(Duration::from_millis(15)).await;
+
+        let message = storage.get(0).await;
+
+        assert!(message.is_ok());
+        assert_eq!(message.unwrap(), test_message.as_bytes());
     }
 }

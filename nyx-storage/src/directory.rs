@@ -1,6 +1,6 @@
 use std::{fmt::Debug, io::ErrorKind};
 
-use async_std::fs::File;
+use async_std::fs::{File, OpenOptions};
 
 const NYX_BASE_PATH: &'static str = "nyx";
 
@@ -67,16 +67,17 @@ impl Directory {
 
     pub async fn open(&self, filename: &str) -> Result<File, String> {
         let file_path = self.get_file_path(filename)?;
-        File::open(file_path)
-            .await
-            .map_err(|e| format!("Directory: {}", e))
-    }
 
-    pub async fn create(&self, filename: &str) -> Result<File, String> {
-        let file_path = self.get_file_path(filename)?;
-        File::create(file_path)
+        match OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(file_path)
             .await
-            .map_err(|e| format!("Directory: {}", e))
+        {
+            Ok(file) => Ok(file),
+            Err(e) => Err(format!("Directory: {}", e)),
+        }
     }
 }
 
@@ -93,37 +94,13 @@ mod tests {
 
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
-    async fn create() {
+    async fn open() {
         let dir = Directory::new("events-replica-1").await.unwrap();
-        let create_file_result = dir.create("topic_name_1.data").await;
+        let open_result = dir.open("topic_name_1.data").await;
 
-        assert!(create_file_result.is_ok());
+        assert!(open_result.is_ok());
 
         let remove_test_file_result = remove_test_file(&dir, "topic_name_1.data").await;
-
-        assert!(remove_test_file_result.is_ok());
-    }
-
-    #[async_std::test]
-    #[cfg_attr(miri, ignore)]
-    async fn open_when_file_not_exists_should_error() {
-        let dir = Directory::new("events-replica-1").await.unwrap();
-        let file_result = dir.open("topic_doesnt_exist.data").await;
-
-        assert!(file_result.is_err());
-    }
-
-    #[async_std::test]
-    #[cfg_attr(miri, ignore)]
-    async fn open_when_file_exists_should_ok() {
-        let dir = Directory::new("events-replica-1").await.unwrap();
-        let create_file_result = dir.create("topic_name.data").await;
-        let open_file_result = dir.open("topic_name.data").await;
-
-        assert!(create_file_result.is_ok());
-        assert!(open_file_result.is_ok());
-
-        let remove_test_file_result = remove_test_file(&dir, "topic_name.data").await;
 
         assert!(remove_test_file_result.is_ok());
     }
