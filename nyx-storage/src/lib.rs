@@ -120,11 +120,6 @@ mod tests {
 
     use super::*;
 
-    async fn simulate_message_send(storage: &mut Storage, message: &str) -> Result<(), String> {
-        let mut sender = storage.get_storage_sender();
-        sender.send(message.as_bytes()).await
-    }
-
     #[async_std::test]
     async fn create_storage_instance() {
         // (l)eader/(r)eplica_topic-name_partition-count
@@ -138,16 +133,27 @@ mod tests {
         let test_message = "hello world";
 
         let mut storage = Storage::new("TEST_l_reservations_2", 10_000).await.unwrap();
-        let send_result = simulate_message_send(&mut storage, test_message).await;
 
-        assert!(send_result.is_ok());
+        let mut sender = storage.get_storage_sender();
 
-        // wait for the message to arrive to queue
-        async_std::task::sleep(Duration::from_millis(15)).await;
+        let messages = [test_message; 1_000];
 
-        let message = storage.get(0).await;
+        let mut count = 0;
 
-        assert!(message.is_ok());
-        assert_eq!(message.unwrap(), test_message.as_bytes());
+        for message in messages {
+            let send_result: Result<(), String> = sender.send(message.as_bytes()).await;
+            assert!(send_result.is_ok());
+            count += 1;
+        }
+
+        // wait for the message to arrive from the queue
+        async_std::task::sleep(Duration::from_millis(50)).await;
+
+        for index in 0..count {
+            let message = storage.get(index).await;
+
+            assert!(message.is_ok());
+            assert_eq!(message.unwrap(), test_message.as_bytes());
+        }
     }
 }
