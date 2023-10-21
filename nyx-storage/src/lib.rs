@@ -23,7 +23,7 @@ mod write_queue;
 
 pub mod directory;
 
-const BUFFER_MAX_SIZE: usize = 8192;
+const BUFFER_MAX_SIZE: usize = 4096;
 
 /// NOTE: Each partition of a topic should have Storage struct
 #[derive(Debug)]
@@ -57,7 +57,7 @@ impl Storage {
             directory,
             indices,
             file,
-            retrivable_buffer: [0; 8192],
+            retrivable_buffer: [0; BUFFER_MAX_SIZE],
             write_sender,
             write_queue_handle,
         })
@@ -65,6 +65,13 @@ impl Storage {
 
     pub fn get_storage_sender(&mut self) -> StorageSender {
         StorageSender::new(self.write_sender.clone())
+    }
+
+    pub async fn set(&mut self, data: &[u8]) -> Result<(), String> {
+        self.write_sender
+            .send(data.to_vec())
+            .await
+            .map_err(|e| format!("Failed to send data: {}", e))
     }
 
     pub async fn get(&mut self, index: usize) -> Result<&[u8], String> {
@@ -103,10 +110,13 @@ impl Storage {
     async fn seek_bytes_between(&mut self, start: usize, data_size: usize) -> io::Result<&[u8]> {
         let mut file = &*self.file;
         file.seek(SeekFrom::Start(start as u64)).await?;
-        let n = file.read(&mut self.retrivable_buffer[..data_size]).await?;
+        let n: usize = file.read(&mut self.retrivable_buffer[..data_size]).await?;
         if n == 0 {
             // Theoratically should never get here
-            panic!("Got 0 bytes in file read")
+            panic!(
+                "Got 0 bytes in file read start: {} data_size: {} ",
+                start, data_size
+            )
         };
 
         Ok(&self.retrivable_buffer[..data_size])
@@ -121,7 +131,7 @@ mod tests {
 
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
-    async fn new() {
+    async fn new_creates_instances() {
         // (l)eader/(r)eplica_topic-name_partition-count
         let storage = Storage::new("TEST_l_reservations_1", 10_000).await;
 
@@ -130,25 +140,23 @@ mod tests {
 
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
-    async fn get() {
+    async fn get_gets_data_from_storage() {
         let test_message = "hello world";
 
         let mut storage = Storage::new("TEST_l_reservations_2", 10_000).await.unwrap();
-
-        let mut sender = storage.get_storage_sender();
 
         let messages = [test_message; 1_000];
 
         let mut count = 0;
 
         for message in messages {
-            let send_result: Result<(), String> = sender.send(message.as_bytes()).await;
+            let send_result: Result<(), String> = storage.set(message.as_bytes()).await;
             assert!(send_result.is_ok());
             count += 1;
         }
 
         // wait for the message to arrive from the queue
-        async_std::task::sleep(Duration::from_millis(50)).await;
+        async_std::task::sleep(Duration::from_millis(150)).await;
 
         for index in 0..count {
             let message = storage.get(index).await;
