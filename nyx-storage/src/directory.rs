@@ -2,7 +2,7 @@ use std::{fmt::Debug, io::ErrorKind};
 
 use async_std::fs::{File, OpenOptions};
 
-const NYX_BASE_PATH: &'static str = "nyx";
+const NYX_BASE_PATH: &str = "nyx";
 
 #[derive(Debug, Default)]
 pub struct Directory {

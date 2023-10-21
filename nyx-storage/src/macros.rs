@@ -1,6 +1,7 @@
 // Creates a string with the name of the function it currently resides in
 // this function is used in tests where we create distinct files not to have
 // a race condition in tests running in parallel
+#[allow(unused_macros)]
 macro_rules! function {
     () => {{
         fn f() {}
@@ -12,4 +13,5 @@ macro_rules! function {
     }};
 }
 
+#[allow(unused_imports)]
 pub(crate) use function;

@@ -28,14 +28,14 @@ const BUFFER_MAX_SIZE: usize = 8192;
 /// NOTE: Each partition of a topic should have Storage struct
 #[derive(Debug)]
 pub struct Storage {
-    directory: Directory,
+    pub directory: Directory,
     indices: Arc<Mutex<Indices>>,
     file: Arc<File>,
     // TODO: When Storage will be accessed concurrently each concurrent accessor should have a
     // `retrievable_buffer` of its own to read into instead.
     retrivable_buffer: [u8; BUFFER_MAX_SIZE],
     write_sender: Sender<Vec<u8>>,
-    write_queue_handle: JoinHandle<Result<(), std::io::Error>>,
+    pub write_queue_handle: JoinHandle<Result<(), std::io::Error>>,
 }
 
 impl Storage {
@@ -80,7 +80,7 @@ impl Storage {
         let offsets = indices
             .data
             .get(&index)
-            .map(|v| v.clone())
+            .copied()
             .ok_or("record doesn't exist.".to_string())?;
 
         drop(indices);
@@ -95,10 +95,9 @@ impl Storage {
             ));
         }
 
-        return self
-            .seek_bytes_between(offsets.start(), data_size)
+        self.seek_bytes_between(offsets.start(), data_size)
             .await
-            .map_err(|e| format!("Error in Storage (get): {}", e));
+            .map_err(|e| format!("Error in Storage (get): {}", e))
     }
 
     async fn seek_bytes_between(&mut self, start: usize, data_size: usize) -> io::Result<&[u8]> {
@@ -110,7 +109,7 @@ impl Storage {
             panic!("Got 0 bytes in file read")
         };
 
-        return Ok(&self.retrivable_buffer[..data_size]);
+        Ok(&self.retrivable_buffer[..data_size])
     }
 }
 

@@ -17,10 +17,10 @@ impl Offsets {
     }
 
     pub fn start(&self) -> usize {
-        return self.start;
+        self.start
     }
 
     pub fn end(&self) -> usize {
-        return self.end;
+        self.end
     }
 }
