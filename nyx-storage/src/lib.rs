@@ -42,8 +42,7 @@ impl Storage {
     pub async fn new(title: &str, max_queue: usize) -> Result<Self, String> {
         let indices = Indices::new();
         let directory = Directory::new(title).await?;
-        let filename = format!("{}.data", title);
-        let file = Arc::new(directory.open(&filename).await?);
+        let file = Arc::new(directory.open().await?);
 
         let (write_sender, write_receiver) = bounded(max_queue);
 
@@ -72,6 +71,11 @@ impl Storage {
             .send(data.to_vec())
             .await
             .map_err(|e| format!("Failed to send data: {}", e))
+    }
+
+    pub async fn len(&self) -> usize {
+        let indices = self.indices.lock().await;
+        indices.length
     }
 
     pub async fn get(&mut self, index: usize) -> Result<&[u8], String> {
@@ -129,6 +133,10 @@ mod tests {
 
     use super::*;
 
+    async fn cleanup(storage: &Storage) {
+        storage.directory.remove().await.unwrap();
+    }
+
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn new_creates_instances() {
@@ -141,28 +149,32 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_gets_data_from_storage() {
-        let test_message = "hello world";
+        let test_message = b"hello world this is a longer string which we are testing to test";
 
         let mut storage = Storage::new("TEST_l_reservations_2", 10_000).await.unwrap();
 
-        let messages = [test_message; 1_000];
+        let count = 1_000;
 
-        let mut count = 0;
+        let messages = vec![test_message; count];
 
         for message in messages {
-            let send_result: Result<(), String> = storage.set(message.as_bytes()).await;
-            assert!(send_result.is_ok());
-            count += 1;
+            storage.set(message).await.unwrap();
         }
 
         // wait for the message to arrive from the queue
-        async_std::task::sleep(Duration::from_millis(150)).await;
+        async_std::task::sleep(Duration::from_millis(50)).await;
+
+        println!("Indices length: {}", storage.len().await);
+
+        assert_eq!(storage.len().await, count);
 
         for index in 0..count {
             let message = storage.get(index).await;
 
             assert!(message.is_ok());
-            assert_eq!(message.unwrap(), test_message.as_bytes());
+            assert_eq!(message.unwrap(), test_message);
         }
+
+        cleanup(&storage).await;
     }
 }
