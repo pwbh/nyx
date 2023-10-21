@@ -74,8 +74,8 @@ impl Storage {
     }
 
     pub async fn len(&self) -> usize {
-        let indices = self.indices.lock().await;
-        indices.length
+        let indices: async_std::sync::MutexGuard<'_, Indices> = self.indices.lock().await;
+        indices.data.len()
     }
 
     pub async fn get(&mut self, index: usize) -> Result<&[u8], String> {
@@ -129,7 +129,7 @@ impl Storage {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use super::*;
 
@@ -149,20 +149,29 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_gets_data_from_storage() {
-        let test_message = b"hello world this is a longer string which we are testing to test";
+        let test_message = b"hello world";
 
         let mut storage = Storage::new("TEST_l_reservations_2", 10_000).await.unwrap();
 
         let count = 1_000;
 
+        let delay = (0.0006 * count as f32) as u64;
+        let delay = if delay < 150 { 150 } else { delay };
+
         let messages = vec![test_message; count];
+
+        let now = Instant::now();
 
         for message in messages {
             storage.set(message).await.unwrap();
         }
 
+        let elapsed = now.elapsed();
+
+        println!("Pushed {} messages in: {:.2?}", count, elapsed);
+
         // wait for the message to arrive from the queue
-        async_std::task::sleep(Duration::from_millis(50)).await;
+        async_std::task::sleep(Duration::from_millis(delay)).await;
 
         println!("Indices length: {}", storage.len().await);
 
