@@ -120,7 +120,8 @@ mod tests {
     use super::*;
 
     #[async_std::test]
-    async fn create_storage_instance() {
+    #[cfg_attr(miri, ignore)]
+    async fn new() {
         // (l)eader/(r)eplica_topic-name_partition-count
         let storage = Storage::new("TEST_l_reservations_1", 10_000).await;
 
@@ -128,6 +129,7 @@ mod tests {
     }
 
     #[async_std::test]
+    #[cfg_attr(miri, ignore)]
     async fn get() {
         let test_message = "hello world";
 
