@@ -11,25 +11,59 @@ use async_std::{
     sync::Mutex,
 };
 
-use crate::{offsets::Offsets, Indices};
+use crate::{directory::Directory, offsets::Offsets, Indices};
 
 pub struct WriteQueue {
-    file: Arc<File>,
+    partition_file: File,
+    indices_file: File,
     indices: Arc<Mutex<Indices>>,
 }
 
 impl WriteQueue {
-    async fn new(indices: Arc<Mutex<Indices>>, file: Arc<File>) -> io::Result<Self> {
-        let mut file_ref = &*file;
-        file_ref.seek(SeekFrom::End(0)).await?;
+    pub async fn run(
+        indices: Arc<Mutex<Indices>>,
+        queue: Receiver<Vec<u8>>,
+        directory: Directory,
+    ) -> io::Result<()> {
+        let indices_file = directory
+            .open_write(&crate::directory::DataType::Indices)
+            .await?;
+        let partition_file = directory
+            .open_write(&crate::directory::DataType::Partition)
+            .await?;
 
-        Ok(Self { indices, file })
+        let mut write_queue = Self::new(indices, indices_file, partition_file).await?;
+
+        while let Ok(data) = queue.recv().await {
+            write_queue.append(&data[..]).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn new(
+        indices: Arc<Mutex<Indices>>,
+        indices_file: File,
+        partition_file: File,
+    ) -> io::Result<Self> {
+        Self::seek_file_end(&indices_file).await?;
+        Self::seek_file_end(&partition_file).await?;
+
+        Ok(Self {
+            indices,
+            partition_file,
+            indices_file,
+        })
+    }
+
+    async fn seek_file_end(file: &File) -> io::Result<u64> {
+        let mut file = &*file;
+        file.seek(SeekFrom::End(0)).await
     }
 
     async fn append(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut file = &*self.file;
-        file.write(buf).await?;
-        file.seek(SeekFrom::End(0)).await?;
+        self.partition_file.write(buf).await?;
+        self.partition_file.seek(SeekFrom::End(0)).await?;
 
         let mut indices = self.indices.lock().await;
         let length = indices.length;
@@ -49,22 +83,6 @@ impl WriteQueue {
             }
         }
     }
-
-    pub async fn run(
-        indices: Arc<Mutex<Indices>>,
-        queue: Receiver<Vec<u8>>,
-        file: Arc<File>,
-    ) -> io::Result<()> {
-        let mut write_queue = Self::new(indices, file).await?;
-
-        while let Ok(data) = queue.recv().await {
-            write_queue.append(&data[..]).await?;
-        }
-
-        Ok(())
-    }
-
-    // pub
 }
 
 #[cfg(test)]
@@ -75,27 +93,38 @@ mod tests {
 
     use super::*;
 
+    async fn setup_write_queue(
+        indices_path: &str,
+        partition_path: &str,
+    ) -> Result<WriteQueue, Error> {
+        let indices = Indices::new();
+
+        let indices_file = create_test_file(&indices_path).await;
+        let partition_file = create_test_file(&partition_path).await;
+
+        WriteQueue::new(indices, indices_file, partition_file).await
+    }
+
     async fn create_test_file(test_file_path: &str) -> File {
         File::create(test_file_path).await.unwrap()
     }
 
-    async fn cleanup_test_file(test_file_path: &str) -> io::Result<()> {
-        fs::remove_file(test_file_path).await
+    async fn cleanup_test_files(indices_path: &str, partition_path: &str) -> io::Result<()> {
+        fs::remove_file(indices_path).await?;
+        fs::remove_file(partition_path).await
     }
 
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn write_queue_instance_new_ok() {
-        let empty_indices = Indices::new();
+        let indices_path = format!("./{}.index", function!());
+        let partition_path = format!("./{}.data", function!());
 
-        let test_file_path = format!("./{}.data", function!());
-
-        let file = Arc::new(create_test_file(&test_file_path).await);
-        let write_queue_result = WriteQueue::new(empty_indices, file.clone()).await;
+        let write_queue_result = setup_write_queue(&indices_path, &partition_path).await;
 
         assert!(write_queue_result.is_ok());
 
-        let cleanup_result = cleanup_test_file(&test_file_path).await;
+        let cleanup_result = cleanup_test_files(&indices_path, &partition_path).await;
 
         assert!(cleanup_result.is_ok());
     }
@@ -104,12 +133,10 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn append() {
-        let empty_indices = Indices::new();
+        let indices_path = format!("./{}.index", function!());
+        let partition_path = format!("./{}.data", function!());
 
-        let test_file_path = format!("./{}.data", function!());
-
-        let file = Arc::new(create_test_file(&test_file_path).await);
-        let write_queue_result = WriteQueue::new(empty_indices, file.clone()).await;
+        let write_queue_result = setup_write_queue(&indices_path, &partition_path).await;
 
         assert!(write_queue_result.is_ok());
 
@@ -124,7 +151,7 @@ mod tests {
             assert!(append_result.is_ok());
         }
 
-        let cleanup_result = cleanup_test_file(&test_file_path).await;
+        let cleanup_result = cleanup_test_files(&indices_path, &partition_path).await;
 
         assert!(cleanup_result.is_ok());
     }

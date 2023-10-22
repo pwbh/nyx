@@ -1,10 +1,21 @@
-use std::{fmt::Debug, io::ErrorKind};
+use std::{
+    fmt::Debug,
+    io::{Error, ErrorKind},
+};
 
-use async_std::fs::{self, File, OpenOptions};
+use async_std::{
+    fs::{self, File, OpenOptions},
+    io,
+};
 
 const NYX_BASE_PATH: &str = "nyx";
 
-#[derive(Debug, Default)]
+pub enum DataType {
+    Partition,
+    Indices,
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct Directory {
     base_path: String,
     title: String,
@@ -14,26 +25,35 @@ pub struct Directory {
 
 /// Directory is used to manage the internal creation and opening of the files.
 impl Directory {
-    pub async fn new(title: &str) -> Result<Self, String> {
+    pub async fn new(title: &str) -> io::Result<Self> {
         let dir = Self {
             base_path: format!("{}/{}", NYX_BASE_PATH, title),
             title: title.to_owned(),
         };
 
-        let full_base_path = dir.get_full_base_path()?;
+        let full_base_path = dir.get_base_path()?;
 
         match async_std::fs::create_dir_all(&full_base_path).await {
             Ok(_) => {}
             Err(e) => match e.kind() {
                 ErrorKind::AlreadyExists => {}
-                _ => return Err(format!("Couldn't create directory: {}", e)),
+                e => return Err(Error::new(e, format!("Couldn't create directory: {}", e))),
             },
         };
 
         Ok(dir)
     }
 
-    fn get_full_base_path(&self) -> Result<String, String> {
+    fn get_file_path_by_datatype(&self, datatype: &DataType) -> io::Result<String> {
+        let base_path = self.get_base_path()?;
+
+        match datatype {
+            DataType::Partition => Ok(format!("{}/{}.data", base_path, self.title)),
+            DataType::Indices => Ok(format!("{}/{}.index", base_path, self.title)),
+        }
+    }
+
+    fn get_base_path(&self) -> io::Result<String> {
         let mut final_dir = Some(String::new());
 
         let base_path = self.base_path.clone();
@@ -49,58 +69,75 @@ impl Directory {
             final_dir = Some(config_dir);
         }
 
-        final_dir.ok_or("Couldn't get the systems home directory. Please setup a HOME env variable and pass your system's home directory there.".to_string())
+        final_dir.ok_or(Error::new(ErrorKind::NotFound, "Couldn't get the systems home directory. Please setup a HOME env variable and pass your system's home directory there.".to_string()))
     }
 
-    fn get_file_path(&self) -> Result<String, String> {
-        let full_base_path = self.get_full_base_path()?;
-        Ok(format!("{}/{}.data", full_base_path, self.title))
+    pub async fn create_file(&self, datatype: &DataType) -> io::Result<()> {
+        let path = self.get_file_path_by_datatype(datatype)?;
+        File::create(path).await?;
+        Ok(())
     }
 
-    pub async fn open(&self) -> Result<File, String> {
-        let file_path = self.get_file_path()?;
-
-        match OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(file_path)
-            .await
-        {
-            Ok(file) => Ok(file),
-            Err(e) => Err(format!("Directory: {}", e)),
-        }
+    pub async fn create_all(&self) -> io::Result<()> {
+        self.create_file(&DataType::Indices).await?;
+        self.create_file(&DataType::Partition).await
     }
 
-    pub async fn remove(&self) -> Result<(), String> {
-        let file_path = self.get_file_path()?;
-        fs::remove_file(&file_path)
-            .await
-            .map_err(|_| format!("Failed to delete file {}", file_path))
+    pub async fn open_read(&self, datatype: &DataType) -> io::Result<File> {
+        let path = self.get_file_path_by_datatype(datatype)?;
+        OpenOptions::new().read(true).open(path).await
+    }
+
+    pub async fn open_write(&self, datatype: &DataType) -> io::Result<File> {
+        let path = self
+            .get_file_path_by_datatype(datatype)
+            .map_err(|e| Error::new(ErrorKind::NotFound, e))?;
+        OpenOptions::new().write(true).create(true).open(path).await
+    }
+
+    pub async fn delete(&self, datatype: &DataType) -> io::Result<()> {
+        let path = self.get_file_path_by_datatype(datatype)?;
+        fs::remove_file(&path).await
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::io::Error;
-
     use super::*;
 
-    async fn remove_test_file(dir: &Directory) -> Result<(), Error> {
-        let filepath = dir.get_file_path().unwrap();
-        async_std::fs::remove_file(filepath).await
+    #[async_std::test]
+    #[cfg_attr(miri, ignore)]
+    async fn open_read_and_delete() {
+        let dir = Directory::new("events-replica-1").await.unwrap();
+
+        // Opening non-existing file is not possible in read-mode only
+        let open_partition_result = dir.open_read(&DataType::Partition).await;
+
+        assert!(open_partition_result.is_err());
+
+        let open_indices_result = dir.open_read(&DataType::Indices).await;
+
+        assert!(open_indices_result.is_err());
     }
 
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
-    async fn open() {
-        let dir = Directory::new("events-replica-1").await.unwrap();
-        let open_result = dir.open().await;
+    async fn open_write_and_delete() {
+        let dir = Directory::new("events-replica-2").await.unwrap();
+        let open_partition_result = dir.open_write(&DataType::Partition).await;
 
-        assert!(open_result.is_ok());
+        assert!(open_partition_result.is_ok());
 
-        let remove_test_file_result = remove_test_file(&dir).await;
+        let open_indices_result = dir.open_write(&DataType::Indices).await;
 
-        assert!(remove_test_file_result.is_ok());
+        assert!(open_indices_result.is_ok());
+
+        let delete_partition_result = dir.delete(&DataType::Partition).await;
+
+        assert!(delete_partition_result.is_ok());
+
+        let delete_indices_result = dir.delete(&DataType::Indices).await;
+
+        assert!(delete_indices_result.is_ok());
     }
 }

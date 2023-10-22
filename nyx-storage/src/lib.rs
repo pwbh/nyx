@@ -25,13 +25,14 @@ pub mod directory;
 
 const BUFFER_MAX_SIZE: usize = 4096;
 
-/// NOTE: Each partition of a topic should have Storage struct
+/// NOTE: Each partition of a topic should have a Storage for the data it stores
 #[derive(Debug)]
 pub struct Storage {
     pub directory: Directory,
     indices: Arc<Mutex<Indices>>,
-    file: Arc<File>,
-    // TODO: When Storage will be accessed concurrently each concurrent accessor should have a
+    // Partition data in read mode only
+    data: File,
+    // TODO: When Storage will be accessed concurrently each concurrent accessor (consumer) should have a
     // `retrievable_buffer` of its own to read into instead.
     retrivable_buffer: [u8; BUFFER_MAX_SIZE],
     write_sender: Sender<Vec<u8>>,
@@ -40,22 +41,31 @@ pub struct Storage {
 
 impl Storage {
     pub async fn new(title: &str, max_queue: usize) -> Result<Self, String> {
+        let directory = Directory::new(title)
+            .await
+            .map_err(|e| format!("Storage (directory): {}", e))?;
+        directory
+            .create_all()
+            .await
+            .map_err(|e| format!("String (create_all): {}", e))?;
         let indices = Indices::new();
-        let directory = Directory::new(title).await?;
-        let file = Arc::new(directory.open().await?);
+        let data: File = directory
+            .open_read(&directory::DataType::Partition)
+            .await
+            .map_err(|e| format!("Storage (open_read): {}", e))?;
 
         let (write_sender, write_receiver) = bounded(max_queue);
 
         let write_queue_handle = async_std::task::spawn(WriteQueue::run(
             indices.clone(),
             write_receiver,
-            file.clone(),
+            directory.clone(),
         ));
 
         Ok(Self {
             directory,
             indices,
-            file,
+            data,
             retrivable_buffer: [0; BUFFER_MAX_SIZE],
             write_sender,
             write_queue_handle,
@@ -112,9 +122,11 @@ impl Storage {
     }
 
     async fn seek_bytes_between(&mut self, start: usize, data_size: usize) -> io::Result<&[u8]> {
-        let mut file = &*self.file;
-        file.seek(SeekFrom::Start(start as u64)).await?;
-        let n: usize = file.read(&mut self.retrivable_buffer[..data_size]).await?;
+        self.data.seek(SeekFrom::Start(start as u64)).await?;
+        let n: usize = self
+            .data
+            .read(&mut self.retrivable_buffer[..data_size])
+            .await?;
         if n == 0 {
             // Theoratically should never get here
             panic!(
@@ -134,7 +146,16 @@ mod tests {
     use super::*;
 
     async fn cleanup(storage: &Storage) {
-        storage.directory.remove().await.unwrap();
+        storage
+            .directory
+            .delete(&directory::DataType::Partition)
+            .await
+            .unwrap();
+        storage
+            .directory
+            .delete(&directory::DataType::Indices)
+            .await
+            .unwrap();
     }
 
     #[async_std::test]
@@ -149,11 +170,11 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_gets_data_from_storage() {
-        let test_message = b"hello world";
+        let test_message = b"hello world this data is much bigger and I wonder if this change";
 
         let mut storage = Storage::new("TEST_l_reservations_2", 10_000).await.unwrap();
 
-        let count = 1_000;
+        let count = 1_000_000;
 
         let delay = (0.0006 * count as f32) as u64;
         let delay = if delay < 150 { 150 } else { delay };
