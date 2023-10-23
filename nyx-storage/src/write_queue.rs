@@ -13,6 +13,7 @@ use async_std::{
 
 use crate::{directory::Directory, offsets::Offsets, Indices};
 
+#[derive(Debug)]
 pub struct WriteQueue {
     partition_file: File,
     pub indices_file: File,
@@ -80,7 +81,7 @@ impl WriteQueue {
                 indices.length += 1;
                 indices.total_bytes += buf.len();
 
-                let (index_bytes, offsets_bytes) = offsets.writable_bytes(&length)?;
+                let (index_bytes, offsets_bytes) = offsets.writable_bytes(length)?;
 
                 Self::append_indices(&mut self.indices_file, index_bytes).await?;
                 Self::append_indices(&mut self.indices_file, offsets_bytes).await?;
@@ -108,7 +109,10 @@ mod tests {
         indices_path: &str,
         partition_path: &str,
     ) -> Result<WriteQueue, Error> {
-        let indices = Indices::new();
+        let folder = function!();
+
+        let directory = Directory::new(&folder).await?;
+        let indices = Indices::from(&directory).await?;
 
         let indices_file = create_test_file(&indices_path).await;
         let partition_file = create_test_file(&partition_path).await;

@@ -44,11 +44,16 @@ impl Storage {
         let directory = Directory::new(title)
             .await
             .map_err(|e| format!("Storage (directory): {}", e))?;
+
         directory
             .create_all()
             .await
             .map_err(|e| format!("String (create_all): {}", e))?;
-        let indices = Indices::new();
+
+        let indices = Indices::from(&directory)
+            .await
+            .map_err(|e| format!("Storage (Indices::from): {}", e))?;
+
         let data: File = directory
             .open_read(&directory::DataType::Partition)
             .await
