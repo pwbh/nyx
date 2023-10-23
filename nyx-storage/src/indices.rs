@@ -1,8 +1,8 @@
 use std::{collections::HashMap, sync::Arc};
 
-use async_std::{io, sync::Mutex};
+use async_std::sync::Mutex;
 
-use crate::{directory::Directory, offsets::Offsets};
+use crate::offsets::Offsets;
 
 #[derive(Debug)]
 pub struct Indices {
@@ -22,15 +22,15 @@ impl Indices {
         Arc::new(Mutex::new(indices))
     }
 
-    async fn load_from_disk(directory: &Directory) -> io::Result<()> {
-        let disk_data = directory
-            .open_write(&crate::directory::DataType::Indices)
-            .await?;
+    //  async fn load_from_disk(directory: &Directory) -> io::Result<()> {
+    //      let disk_data = directory
+    //          .open_write(&crate::directory::DataType::Indices)
+    //          .await?;
 
-        unimplemented!()
-    }
+    //      unimplemented!()
+    //  }
 
-    async fn set(index: usize, offsets: &Offsets) -> io::Result<()> {
-        unimplemented!()
-    }
+    //  async fn set(index: usize, offsets: &Offsets) -> io::Result<()> {
+    //      unimplemented!()
+    //  }
 }

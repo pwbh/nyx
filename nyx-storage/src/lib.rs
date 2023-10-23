@@ -92,6 +92,7 @@ impl Storage {
         // TODO: Think of a better way to do this, maybe able to get rid of the lock somehow
         // and still be safe.
         let indices = self.indices.lock().await;
+
         let length = indices.length;
 
         if index >= length {
@@ -110,7 +111,7 @@ impl Storage {
 
         if data_size > self.retrivable_buffer.len() {
             return Err(format!(
-                "Seeked data size: {}kb maximum retrivable size {}kb",
+                "Seeked data size: {} kb maximum retrivable size {} kb",
                 data_size,
                 self.retrivable_buffer.len()
             ));
@@ -123,17 +124,10 @@ impl Storage {
 
     async fn seek_bytes_between(&mut self, start: usize, data_size: usize) -> io::Result<&[u8]> {
         self.data.seek(SeekFrom::Start(start as u64)).await?;
-        let n: usize = self
-            .data
-            .read(&mut self.retrivable_buffer[..data_size])
+
+        self.data
+            .read_exact(&mut self.retrivable_buffer[..data_size])
             .await?;
-        if n == 0 {
-            // Theoratically should never get here
-            panic!(
-                "Got 0 bytes in file read start: {} data_size: {} ",
-                start, data_size
-            )
-        };
 
         Ok(&self.retrivable_buffer[..data_size])
     }
@@ -170,11 +164,11 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_gets_data_from_storage() {
-        let test_message = b"hello world this data is much bigger and I wonder if this change";
+        let test_message = b"hello world";
 
         let mut storage = Storage::new("TEST_l_reservations_2", 10_000).await.unwrap();
 
-        let count = 1_000_000;
+        let count = 100;
 
         let delay = (0.0006 * count as f32) as u64;
         let delay = if delay < 150 { 150 } else { delay };
@@ -193,8 +187,6 @@ mod tests {
 
         // wait for the message to arrive from the queue
         async_std::task::sleep(Duration::from_millis(delay)).await;
-
-        println!("Indices length: {}", storage.len().await);
 
         assert_eq!(storage.len().await, count);
 

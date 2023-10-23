@@ -15,7 +15,7 @@ use crate::{directory::Directory, offsets::Offsets, Indices};
 
 pub struct WriteQueue {
     partition_file: File,
-    indices_file: File,
+    pub indices_file: File,
     indices: Arc<Mutex<Indices>>,
 }
 
@@ -63,14 +63,15 @@ impl WriteQueue {
 
     async fn append(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.partition_file.write(buf).await?;
-        self.partition_file.seek(SeekFrom::End(0)).await?;
+        Self::seek_file_end(&self.partition_file).await?;
 
         let mut indices = self.indices.lock().await;
+
         let length = indices.length;
         let total_bytes = indices.total_bytes;
 
         match indices.data.entry(length) {
-            Entry::Occupied(..) => Err(Error::new(io::ErrorKind::AlreadyExists, "Given index is occupied, please refer to github for fixing sync issues in Storage.")),
+            Entry::Occupied(..) => Err(Error::new(io::ErrorKind::AlreadyExists, "Already exists.")),
             Entry::Vacant(entry) => {
                 let offsets = Offsets::new(total_bytes, total_bytes + buf.len())
                     .map_err(|e| Error::new(io::ErrorKind::InvalidData, e))?;
@@ -79,9 +80,19 @@ impl WriteQueue {
                 indices.length += 1;
                 indices.total_bytes += buf.len();
 
+                let (index_bytes, offsets_bytes) = offsets.writable_bytes(&length)?;
+
+                Self::append_indices(&mut self.indices_file, index_bytes).await?;
+                Self::append_indices(&mut self.indices_file, offsets_bytes).await?;
+
                 Ok(buf.len())
             }
         }
+    }
+
+    async fn append_indices(indices_file: &mut File, data: &[u8]) -> io::Result<u64> {
+        indices_file.write(data).await?;
+        Self::seek_file_end(&indices_file).await
     }
 }
 
