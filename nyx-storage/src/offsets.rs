@@ -1,5 +1,3 @@
-use std::io;
-
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Offsets {
@@ -19,11 +17,12 @@ impl Offsets {
         Ok(Self { start, end })
     }
 
-    pub fn writable_bytes<'a>(&'a self, index: usize) -> io::Result<(&'a [u8], &'a [u8])> {
-        let index_bytes = &index as *const _ as *const [u8; std::mem::size_of::<usize>()];
-        let offsets_bytes = self as *const _ as *const [u8; std::mem::size_of::<Offsets>()];
+    pub fn to_bytes(&self, index: usize) -> ([u8; 8], [u8; 8], [u8; 8]) {
+        let index_bytes = index.to_be_bytes();
+        let start_bytes = self.start.to_be_bytes();
+        let end_bytes = self.end.to_be_bytes();
 
-        Ok(unsafe { (&*index_bytes, &*offsets_bytes) })
+        (index_bytes, start_bytes, end_bytes)
     }
 
     pub fn start(&self) -> usize {

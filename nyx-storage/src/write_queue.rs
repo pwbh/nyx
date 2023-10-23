@@ -81,10 +81,11 @@ impl WriteQueue {
                 indices.length += 1;
                 indices.total_bytes += buf.len();
 
-                let (index_bytes, offsets_bytes) = offsets.writable_bytes(length)?;
+                let (index_bytes, start_bytes, end_bytes) = offsets.to_bytes(length);
 
-                Self::append_indices(&mut self.indices_file, index_bytes).await?;
-                Self::append_indices(&mut self.indices_file, offsets_bytes).await?;
+                Self::append_indices(&mut self.indices_file, &index_bytes).await?;
+                Self::append_indices(&mut self.indices_file, &start_bytes).await?;
+                Self::append_indices(&mut self.indices_file, &end_bytes).await?;
 
                 Ok(buf.len())
             }

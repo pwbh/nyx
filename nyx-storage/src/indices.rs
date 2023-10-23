@@ -45,20 +45,11 @@ impl Indices {
         loop {
             let n = file.read(&mut buf).await?;
 
-            println!("Bytes read: {}", n);
-
             if n == 0 {
                 break;
             }
 
             file.seek(io::SeekFrom::Current(INDEX_SIZE as i64));
-
-            println!(
-                "Before deserialization - index: {:?} start: {:?} end: {:?}",
-                &buf[0..8],
-                &buf[8..16],
-                &buf[16..24]
-            );
 
             let index = usize::from_be_bytes([
                 buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
@@ -70,8 +61,6 @@ impl Indices {
             let end = usize::from_be_bytes([
                 buf[16], buf[17], buf[18], buf[19], buf[20], buf[21], buf[22], buf[23],
             ]);
-
-            println!("in unsafe index: {} start: {} end: {}", index, start, end);
 
             match indices.data.entry(index) {
                 Entry::Occupied(_) => {
@@ -108,19 +97,14 @@ mod tests {
             .unwrap();
 
         for (index, offset) in offsets.iter().enumerate() {
-            let index_bytes = index.to_be_bytes();
-            let start_bytes = offset.start().to_be_bytes();
-            let end_bytes = offset.end().to_be_bytes();
-
-            println!(
-                "to save index: {:?} start: {:?} end: {:?}",
-                index_bytes, start_bytes, end_bytes
-            );
+            let (index_bytes, start_bytes, end_bytes) = offset.to_bytes(index);
 
             file.write(&index_bytes).await.unwrap();
             file.seek(SeekFrom::End(0)).await.unwrap();
+
             file.write(&start_bytes).await.unwrap();
             file.seek(SeekFrom::End(0)).await.unwrap();
+
             file.write(&end_bytes).await.unwrap();
             file.seek(SeekFrom::End(0)).await.unwrap();
         }
@@ -135,8 +119,11 @@ mod tests {
 
         let indices_result = Indices::from(&directory).await;
 
-        println!("{:?}", indices_result);
-
         assert!(indices_result.is_ok());
+
+        directory
+            .delete(&crate::directory::DataType::Indices)
+            .await
+            .unwrap();
     }
 }
