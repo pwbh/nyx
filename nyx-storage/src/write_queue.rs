@@ -1,15 +1,10 @@
 use std::{
     collections::hash_map::Entry,
-    io::{self, Error, SeekFrom},
+    io::{self, Error},
     sync::Arc,
 };
 
-use async_std::{
-    channel::Receiver,
-    fs::File,
-    io::{prelude::SeekExt, WriteExt},
-    sync::Mutex,
-};
+use async_std::{channel::Receiver, fs::File, io::WriteExt, sync::Mutex};
 
 use crate::{directory::Directory, offsets::Offsets, Indices};
 
@@ -47,9 +42,6 @@ impl WriteQueue {
         indices_file: File,
         partition_file: File,
     ) -> io::Result<Self> {
-        Self::seek_file_end(&indices_file).await?;
-        Self::seek_file_end(&partition_file).await?;
-
         Ok(Self {
             indices,
             partition_file,
@@ -57,14 +49,8 @@ impl WriteQueue {
         })
     }
 
-    async fn seek_file_end(file: &File) -> io::Result<u64> {
-        let mut file = &*file;
-        file.seek(SeekFrom::End(0)).await
-    }
-
     async fn append(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.partition_file.write(buf).await?;
-        Self::seek_file_end(&self.partition_file).await?;
 
         let mut indices = self.indices.lock().await;
 
@@ -76,25 +62,21 @@ impl WriteQueue {
             Entry::Vacant(entry) => {
                 let offsets = Offsets::new(total_bytes, total_bytes + buf.len())
                     .map_err(|e| Error::new(io::ErrorKind::InvalidData, e))?;
+
                 entry.insert(offsets);
 
                 indices.length += 1;
                 indices.total_bytes += buf.len();
 
-                let (index_bytes, start_bytes, end_bytes) = offsets.to_bytes(length);
+                let index_bytes = unsafe { *(&length as *const _ as *const [u8; 8]) };
+                let offsets = offsets.as_bytes();
 
-                Self::append_indices(&mut self.indices_file, &index_bytes).await?;
-                Self::append_indices(&mut self.indices_file, &start_bytes).await?;
-                Self::append_indices(&mut self.indices_file, &end_bytes).await?;
+                self.indices_file.write(&index_bytes).await?;
+                self.indices_file.write(offsets).await?;
 
                 Ok(buf.len())
             }
         }
-    }
-
-    async fn append_indices(indices_file: &mut File, data: &[u8]) -> io::Result<u64> {
-        indices_file.write(data).await?;
-        Self::seek_file_end(&indices_file).await
     }
 }
 

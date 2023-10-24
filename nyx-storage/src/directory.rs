@@ -92,7 +92,11 @@ impl Directory {
         let path = self
             .get_file_path_by_datatype(datatype)
             .map_err(|e| Error::new(ErrorKind::NotFound, e))?;
-        OpenOptions::new().write(true).create(true).open(path).await
+        OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(path)
+            .await
     }
 
     pub async fn delete(&self, datatype: &DataType) -> io::Result<()> {

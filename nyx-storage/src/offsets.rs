@@ -17,12 +17,9 @@ impl Offsets {
         Ok(Self { start, end })
     }
 
-    pub fn to_bytes(&self, index: usize) -> ([u8; 8], [u8; 8], [u8; 8]) {
-        let index_bytes = index.to_be_bytes();
-        let start_bytes = self.start.to_be_bytes();
-        let end_bytes = self.end.to_be_bytes();
-
-        (index_bytes, start_bytes, end_bytes)
+    pub fn as_bytes(&self) -> &[u8] {
+        let offsets = self as *const _ as *const [u8; 16];
+        unsafe { &(*offsets) }
     }
 
     pub fn start(&self) -> usize {

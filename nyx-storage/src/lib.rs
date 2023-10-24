@@ -131,7 +131,7 @@ impl Storage {
         self.data.seek(SeekFrom::Start(start as u64)).await?;
 
         self.data
-            .read_exact(&mut self.retrivable_buffer[..data_size])
+            .read(&mut self.retrivable_buffer[..data_size])
             .await?;
 
         Ok(&self.retrivable_buffer[..data_size])
@@ -169,14 +169,11 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_gets_data_from_storage() {
-        let test_message = b"hello world";
+        let test_message = b"hello world hello world hello worldrld hello worldrld hello worl";
 
         let mut storage = Storage::new("TEST_l_reservations_2", 10_000).await.unwrap();
 
-        let count = 100;
-
-        let delay = (0.0006 * count as f32) as u64;
-        let delay = if delay < 150 { 150 } else { delay };
+        let count = 1_000;
 
         let messages = vec![test_message; count];
 
@@ -191,7 +188,7 @@ mod tests {
         println!("Pushed {} messages in: {:.2?}", count, elapsed);
 
         // wait for the message to arrive from the queue
-        async_std::task::sleep(Duration::from_millis(delay)).await;
+        async_std::task::sleep(Duration::from_millis(2500)).await;
 
         assert_eq!(storage.len().await, count);
 
