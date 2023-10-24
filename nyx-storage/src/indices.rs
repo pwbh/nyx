@@ -51,28 +51,17 @@ impl Indices {
 
             file.seek(io::SeekFrom::Current(INDEX_SIZE as i64));
 
-            println!("index bytes: {:?}", &buf[0..8]);
-
             let index = usize::from_le_bytes([
                 buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
             ]);
-
-            println!("index bytes: {:?}", &buf[8..16]);
 
             let start = usize::from_le_bytes([
                 buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
             ]);
 
-            println!("index bytes: {:?}", &buf[16..24]);
-
             let end = usize::from_le_bytes([
                 buf[16], buf[17], buf[18], buf[19], buf[20], buf[21], buf[22], buf[23],
             ]);
-
-            println!(
-                "decoded index: {:?} start: {:?} end: {:?}",
-                index, start, end
-            );
 
             match indices.data.entry(index) {
                 Entry::Occupied(_) => {
