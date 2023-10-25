@@ -10,14 +10,18 @@ use async_std::{
     sync::Mutex,
     task::JoinHandle,
 };
+use compactor::Compactor;
 use directory::Directory;
 use indices::Indices;
+use segment::Segment;
 use storage_sender::StorageSender;
 use write_queue::WriteQueue;
 
+mod compactor;
 mod indices;
 mod macros;
 mod offsets;
+mod segment;
 mod storage_sender;
 mod write_queue;
 
@@ -36,11 +40,13 @@ pub struct Storage {
     // `retrievable_buffer` of its own to read into instead.
     retrivable_buffer: [u8; BUFFER_MAX_SIZE],
     write_sender: Sender<Vec<u8>>,
+    segment_sender: Sender<Segment>,
     pub write_queue_handle: JoinHandle<Result<(), std::io::Error>>,
+    compaction: bool,
 }
 
 impl Storage {
-    pub async fn new(title: &str, max_queue: usize) -> Result<Self, String> {
+    pub async fn new(title: &str, max_queue: usize, compaction: bool) -> Result<Self, String> {
         let directory = Directory::new(title)
             .await
             .map_err(|e| format!("Storage (directory): {}", e))?;
@@ -60,6 +66,11 @@ impl Storage {
             .map_err(|e| format!("Storage (open_read): {}", e))?;
 
         let (write_sender, write_receiver) = bounded(max_queue);
+        let (segment_sender, segment_receiver) = bounded(max_queue);
+
+        if compaction {
+            async_std::task::spawn(Compactor::run(segment_receiver));
+        }
 
         let write_queue_handle = async_std::task::spawn(WriteQueue::run(
             indices.clone(),
@@ -73,7 +84,9 @@ impl Storage {
             data,
             retrivable_buffer: [0; BUFFER_MAX_SIZE],
             write_sender,
+            segment_sender,
             write_queue_handle,
+            compaction,
         })
     }
 
@@ -156,7 +169,7 @@ mod tests {
         count: usize,
         wait_ms: u64,
     ) -> Storage {
-        let mut storage = Storage::new(title, 10_000).await.unwrap();
+        let mut storage = Storage::new(title, 10_000, false).await.unwrap();
 
         let messages = vec![test_message; count];
 
@@ -182,7 +195,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     async fn new_creates_instances() {
         // (l)eader/(r)eplica_topic-name_partition-count
-        let storage = Storage::new("TEST_l_reservations_1", 10_000).await;
+        let storage = Storage::new("TEST_l_reservations_1", 10_000, false).await;
 
         assert!(storage.is_ok());
     }
