@@ -1,5 +1,4 @@
 use std::{
-    collections::hash_map::Entry,
     io::{self, Error},
     sync::Arc,
 };
@@ -57,26 +56,20 @@ impl WriteQueue {
         let length = indices.length;
         let total_bytes = indices.total_bytes;
 
-        match indices.data.entry(length) {
-            Entry::Occupied(..) => Err(Error::new(io::ErrorKind::AlreadyExists, "Already exists.")),
-            Entry::Vacant(entry) => {
-                let offsets = Offsets::new(total_bytes, total_bytes + buf.len())
-                    .map_err(|e| Error::new(io::ErrorKind::InvalidData, e))?;
+        let offsets = Offsets::new(total_bytes, total_bytes + buf.len())
+            .map_err(|e| Error::new(io::ErrorKind::InvalidData, e))?;
 
-                entry.insert(offsets);
+        indices.data.insert(length, offsets);
+        indices.length += 1;
+        indices.total_bytes += buf.len();
 
-                indices.length += 1;
-                indices.total_bytes += buf.len();
+        let index_bytes = unsafe { *(&length as *const _ as *const [u8; 8]) };
+        let offsets = offsets.as_bytes();
 
-                let index_bytes = unsafe { *(&length as *const _ as *const [u8; 8]) };
-                let offsets = offsets.as_bytes();
+        self.indices_file.write_all(&index_bytes).await?;
+        self.indices_file.write_all(offsets).await?;
 
-                self.indices_file.write_all(&index_bytes).await?;
-                self.indices_file.write_all(offsets).await?;
-
-                Ok(buf.len())
-            }
-        }
+        Ok(buf.len())
     }
 }
 
