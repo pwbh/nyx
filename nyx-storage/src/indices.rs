@@ -1,4 +1,3 @@
-use core::panic;
 use std::{
     collections::{hash_map::Entry, HashMap},
     io::Error,
@@ -51,6 +50,14 @@ impl Indices {
 
             file.seek(io::SeekFrom::Current(INDEX_SIZE as i64));
 
+            println!("buf: {:?}", &buf,);
+            println!(
+                "index: {:?} start: {:?} end: {:?}",
+                &buf[0..8],
+                &buf[8..16],
+                &buf[16..24]
+            );
+
             let index = usize::from_le_bytes([
                 buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
             ]);
@@ -98,30 +105,32 @@ mod tests {
             .unwrap();
 
         for (index, offset) in offsets.iter().enumerate() {
-            let offset_bytes = offset.as_bytes();
             let index_bytes = unsafe { *(&index as *const _ as *const [u8; 8]) };
+            let offset_bytes = offset.as_bytes();
 
-            file.write(&index_bytes).await.unwrap();
+            file.write_all(&index_bytes).await.unwrap();
             file.seek(SeekFrom::End(0)).await.unwrap();
 
-            file.write(offset_bytes).await.unwrap();
+            file.write_all(offset_bytes).await.unwrap();
             file.seek(SeekFrom::End(0)).await.unwrap();
         }
     }
 
     #[async_std::test]
     async fn indices_from() {
-        let path = format!("./testtttt_{}", function!());
+        let path = format!("./{}", function!());
         let directory = Directory::new(&path).await.unwrap();
 
         create_test_data(&directory).await;
 
         let indices_result = Indices::from(&directory).await;
 
+        println!("{:?}", indices_result);
+
         assert!(indices_result.is_ok());
 
         directory
-            .delete(&crate::directory::DataType::Indices)
+            .delete_file(&crate::directory::DataType::Indices)
             .await
             .unwrap();
     }

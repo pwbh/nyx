@@ -142,19 +142,40 @@ impl Storage {
 mod tests {
     use std::time::{Duration, Instant};
 
+    use crate::macros::function;
+
     use super::*;
 
     async fn cleanup(storage: &Storage) {
-        storage
-            .directory
-            .delete(&directory::DataType::Partition)
-            .await
-            .unwrap();
-        storage
-            .directory
-            .delete(&directory::DataType::Indices)
-            .await
-            .unwrap();
+        storage.directory.delete_all().await.unwrap();
+    }
+
+    async fn setup_test_storage(
+        title: &str,
+        test_message: &[u8],
+        count: usize,
+        wait_ms: u64,
+    ) -> Storage {
+        let mut storage = Storage::new(title, 10_000).await.unwrap();
+
+        let messages = vec![test_message; count];
+
+        let now = Instant::now();
+
+        for message in messages {
+            storage.set(message).await.unwrap();
+        }
+
+        let elapsed = now.elapsed();
+
+        println!("Write {} messages in: {:.2?}", count, elapsed);
+
+        // wait for the message to arrive from the queue
+        async_std::task::sleep(Duration::from_millis(wait_ms)).await;
+
+        assert_eq!(storage.len().await, count);
+
+        return storage;
     }
 
     #[async_std::test]
@@ -168,36 +189,43 @@ mod tests {
 
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
-    async fn get_gets_data_from_storage() {
+    async fn get_returns_ok() {
         let test_message = b"hello world hello world hello worldrld hello worldrld hello worl";
 
-        let mut storage = Storage::new("TEST_l_reservations_2", 10_000).await.unwrap();
+        let mut storage = setup_test_storage(&function!(), test_message, 1_000, 100).await;
 
-        let count = 1_000;
-
-        let messages = vec![test_message; count];
+        let indices = storage.indices.lock().await;
+        let length = indices.length;
+        drop(indices);
 
         let now = Instant::now();
 
-        for message in messages {
-            storage.set(message).await.unwrap();
-        }
-
-        let elapsed = now.elapsed();
-
-        println!("Pushed {} messages in: {:.2?}", count, elapsed);
-
-        // wait for the message to arrive from the queue
-        async_std::task::sleep(Duration::from_millis(2500)).await;
-
-        assert_eq!(storage.len().await, count);
-
-        for index in 0..count {
+        for index in 0..length {
             let message = storage.get(index).await;
 
             assert!(message.is_ok());
             assert_eq!(message.unwrap(), test_message);
         }
+
+        let elapsed = now.elapsed();
+
+        println!("Read {} messages in: {:.2?}", length, elapsed);
+
+        cleanup(&storage).await;
+    }
+
+    #[async_std::test]
+    #[cfg_attr(miri, ignore)]
+    async fn get_returns_err_on_index_out_of_bounds() {
+        let total_count = 5;
+
+        let test_message = b"hello world hello world hello worldrld hello worldrld hello worl";
+
+        let mut storage = setup_test_storage(&function!(), test_message, total_count, 5).await;
+
+        let get_result = storage.get(total_count).await;
+
+        assert!(get_result.is_err());
 
         cleanup(&storage).await;
     }

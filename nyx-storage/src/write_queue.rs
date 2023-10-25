@@ -71,8 +71,8 @@ impl WriteQueue {
                 let index_bytes = unsafe { *(&length as *const _ as *const [u8; 8]) };
                 let offsets = offsets.as_bytes();
 
-                self.indices_file.write(&index_bytes).await?;
-                self.indices_file.write(offsets).await?;
+                self.indices_file.write_all(&index_bytes).await?;
+                self.indices_file.write_all(offsets).await?;
 
                 Ok(buf.len())
             }

@@ -99,9 +99,14 @@ impl Directory {
             .await
     }
 
-    pub async fn delete(&self, datatype: &DataType) -> io::Result<()> {
+    pub async fn delete_file(&self, datatype: &DataType) -> io::Result<()> {
         let path = self.get_file_path_by_datatype(datatype)?;
         fs::remove_file(&path).await
+    }
+
+    pub async fn delete_all(&self) -> io::Result<()> {
+        let path = self.get_base_path()?;
+        fs::remove_dir_all(&path).await
     }
 }
 
@@ -136,11 +141,11 @@ mod tests {
 
         assert!(open_indices_result.is_ok());
 
-        let delete_partition_result = dir.delete(&DataType::Partition).await;
+        let delete_partition_result = dir.delete_file(&DataType::Partition).await;
 
         assert!(delete_partition_result.is_ok());
 
-        let delete_indices_result = dir.delete(&DataType::Indices).await;
+        let delete_indices_result = dir.delete_file(&DataType::Indices).await;
 
         assert!(delete_indices_result.is_ok());
     }
