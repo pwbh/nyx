@@ -43,7 +43,7 @@ pub struct Storage {
     retrivable_buffer: [u8; BUFFER_MAX_SIZE],
     write_sender: Sender<Vec<u8>>,
     segment_sender: Sender<Segment>,
-    pub write_queue_handle: JoinHandle<Result<(), std::io::Error>>,
+    write_queue_handle: JoinHandle<Result<(), std::io::Error>>,
     compaction: bool,
 }
 

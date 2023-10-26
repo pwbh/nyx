@@ -79,9 +79,9 @@ impl SegmentationManager {
 
     pub fn get_last_segment(&self, data_type: DataType) -> Option<Arc<Segment>> {
         let segment = if data_type == DataType::Indices {
-            self.indices_segments
+            &self.indices_segments
         } else {
-            self.partition_segments
+            &self.partition_segments
         };
 
         segment.last().map(|segment| segment.clone())

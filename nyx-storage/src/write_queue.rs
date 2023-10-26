@@ -79,6 +79,8 @@ impl WriteQueue {
         indices.length += 1;
         indices.total_bytes += buf.len();
 
+        drop(indices);
+
         let index_bytes = unsafe { *(&length as *const _ as *const [u8; 8]) };
         let offsets = offsets.as_bytes();
 
@@ -94,25 +96,18 @@ impl WriteQueue {
 
 #[cfg(test)]
 mod tests {
-    use async_std::fs;
+    use async_std::fs::{self, File};
 
     use crate::{directory::Directory, macros::function};
 
     use super::*;
 
-    async fn setup_write_queue(
-        indices_path: &str,
-        partition_path: &str,
-    ) -> Result<WriteQueue, Error> {
-        let folder = function!();
-
+    async fn setup_write_queue(folder: &str) -> Result<WriteQueue, Error> {
         let directory = Directory::new(&folder).await?;
         let indices = Indices::from(&directory).await?;
+        let segmentation_manager = SegmentationManager::new(&directory).await?;
 
-        let indices_file = create_test_file(&indices_path).await;
-        let partition_file = create_test_file(&partition_path).await;
-
-        WriteQueue::new(indices, indices_file, partition_file).await
+        Ok(WriteQueue::new(indices, segmentation_manager))
     }
 
     async fn create_test_file(test_file_path: &str) -> File {
@@ -127,10 +122,12 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn write_queue_instance_new_ok() {
+        let folder = function!();
+
         let indices_path = format!("./{}.index", function!());
         let partition_path = format!("./{}.data", function!());
 
-        let write_queue_result = setup_write_queue(&indices_path, &partition_path).await;
+        let write_queue_result = setup_write_queue(&folder).await;
 
         assert!(write_queue_result.is_ok());
 
@@ -143,10 +140,12 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn append() {
+        let folder = function!();
+
         let indices_path = format!("./{}.index", function!());
         let partition_path = format!("./{}.data", function!());
 
-        let write_queue_result = setup_write_queue(&indices_path, &partition_path).await;
+        let write_queue_result = setup_write_queue(&folder).await;
 
         assert!(write_queue_result.is_ok());
 

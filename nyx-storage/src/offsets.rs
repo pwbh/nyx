@@ -1,4 +1,4 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 #[repr(C)]
 pub struct Offsets {
     start: usize,
@@ -22,8 +22,16 @@ impl Offsets {
         })
     }
 
+    pub fn from(start: usize, data_size: usize, segment_index: usize) -> Self {
+        Self {
+            start,
+            data_size,
+            segment_index,
+        }
+    }
+
     pub fn as_bytes(&self) -> &[u8] {
-        let offsets = self as *const _ as *const [u8; 16];
+        let offsets = self as *const _ as *const [u8; 24];
         unsafe { &(*offsets) }
     }
 
