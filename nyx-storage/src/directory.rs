@@ -72,6 +72,16 @@ impl Directory {
         final_dir.ok_or(Error::new(ErrorKind::NotFound, "Couldn't get the systems home directory. Please setup a HOME env variable and pass your system's home directory there.".to_string()))
     }
 
+    pub async fn create_segment(&self) -> io::Result<File> {
+        let path = self.get_base_path()?;
+
+        OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(path)
+            .await
+    }
+
     pub async fn create_file(&self, datatype: &DataType) -> io::Result<()> {
         let path = self.get_file_path_by_datatype(datatype)?;
         File::create(path).await?;

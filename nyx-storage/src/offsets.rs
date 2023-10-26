@@ -2,7 +2,7 @@
 #[repr(C)]
 pub struct Offsets {
     start: usize,
-    end: usize,
+    data_size: usize,
 }
 
 impl Offsets {
@@ -14,7 +14,10 @@ impl Offsets {
             ));
         }
 
-        Ok(Self { start, end })
+        Ok(Self {
+            start,
+            data_size: end - start,
+        })
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -26,7 +29,7 @@ impl Offsets {
         self.start
     }
 
-    pub fn end(&self) -> usize {
-        self.end
+    pub fn data_size(&self) -> usize {
+        self.data_size
     }
 }
