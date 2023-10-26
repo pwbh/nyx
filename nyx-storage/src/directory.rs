@@ -73,18 +73,6 @@ impl Directory {
         final_dir.ok_or(Error::new(ErrorKind::NotFound, "Couldn't get the systems home directory. Please setup a HOME env variable and pass your system's home directory there.".to_string()))
     }
 
-    pub async fn create_file(&self, datatype: DataType, count: usize) -> io::Result<()> {
-        let path = self.get_file_path(datatype, count)?;
-        File::create(path).await?;
-        Ok(())
-    }
-
-    /// Creates a file for Indices and Partition
-    pub async fn create_all(&self, count: usize) -> io::Result<()> {
-        self.create_file(DataType::Indices, count).await?;
-        self.create_file(DataType::Partition, count).await
-    }
-
     pub async fn open_read(&self, datatype: DataType, count: usize) -> io::Result<File> {
         let path = self.get_file_path(datatype, count)?;
         OpenOptions::new().read(true).open(path).await

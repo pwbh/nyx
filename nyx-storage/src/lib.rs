@@ -206,9 +206,9 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_returns_ok() {
-        let test_message = b"hello world hello world hello worldrld hello worldrld hello worl";
+        let test_message = b"hello world";
 
-        let mut storage = setup_test_storage(&function!(), test_message, 1_000, 100).await;
+        let mut storage = setup_test_storage(&function!(), test_message, 1_000, 150).await;
 
         let indices = storage.indices.lock().await;
         let length = indices.length;
@@ -220,6 +220,7 @@ mod tests {
             let message = storage.get(index).await;
 
             assert!(message.is_ok());
+
             assert_eq!(message.unwrap(), test_message);
         }
 
