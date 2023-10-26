@@ -17,7 +17,7 @@ use write_queue::WriteQueue;
 
 mod indices;
 mod macros;
-mod offsets;
+mod offset;
 mod storage_sender;
 mod write_queue;
 
@@ -112,7 +112,7 @@ impl Storage {
 
         drop(indices);
 
-        let data_size = offsets.end() - offsets.start();
+        let data_size = offsets.size();
 
         if data_size > self.retrivable_buffer.len() {
             return Err(format!(

@@ -1,11 +1,11 @@
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
-pub struct Offsets {
+pub struct Offset {
     start: usize,
-    end: usize,
+    size: usize,
 }
 
-impl Offsets {
+impl Offset {
     pub fn new(start: usize, end: usize) -> Result<Self, String> {
         if start >= end {
             return Err(format!(
@@ -14,19 +14,22 @@ impl Offsets {
             ));
         }
 
-        Ok(Self { start, end })
+        Ok(Self {
+            start,
+            size: end - start,
+        })
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        let offsets = self as *const _ as *const [u8; 16];
-        unsafe { &(*offsets) }
+        let offset = self as *const _ as *const [u8; 16];
+        unsafe { &(*offset) }
     }
 
     pub fn start(&self) -> usize {
         self.start
     }
 
-    pub fn end(&self) -> usize {
-        self.end
+    pub fn size(&self) -> usize {
+        self.size
     }
 }

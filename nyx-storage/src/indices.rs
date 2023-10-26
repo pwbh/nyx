@@ -9,11 +9,11 @@ use async_std::{
     sync::Mutex,
 };
 
-use crate::{directory::Directory, offsets::Offsets};
+use crate::{directory::Directory, offset::Offset};
 
 #[derive(Debug)]
 pub struct Indices {
-    pub data: HashMap<usize, Offsets>,
+    pub data: HashMap<usize, Offset>,
     pub length: usize,
     pub total_bytes: usize,
 }
@@ -75,9 +75,9 @@ impl Indices {
                     panic!("Something wen't wrong - index {} is already taken. Please open an issue on our Github about this.", index)
                 }
                 Entry::Vacant(entry) => {
-                    let offsets = Offsets::new(start, end)
+                    let offset = Offset::new(start, end)
                         .map_err(|e| Error::new(io::ErrorKind::InvalidData, e))?;
-                    entry.insert(offsets);
+                    entry.insert(offset);
                 }
             }
         }
@@ -96,7 +96,7 @@ mod tests {
     use super::*;
 
     async fn create_test_data(directory: &Directory) {
-        let offset = Offsets::new(15, 2500).unwrap();
+        let offset = Offset::new(15, 2500).unwrap();
         let offsets = [offset; 50];
 
         let mut file = directory

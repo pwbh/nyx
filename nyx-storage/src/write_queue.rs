@@ -5,7 +5,7 @@ use std::{
 
 use async_std::{channel::Receiver, fs::File, io::WriteExt, sync::Mutex};
 
-use crate::{directory::Directory, offsets::Offsets, Indices};
+use crate::{directory::Directory, offset::Offset, Indices};
 
 #[derive(Debug)]
 pub struct WriteQueue {
@@ -56,18 +56,18 @@ impl WriteQueue {
         let length = indices.length;
         let total_bytes = indices.total_bytes;
 
-        let offsets = Offsets::new(total_bytes, total_bytes + buf.len())
+        let offset = Offset::new(total_bytes, total_bytes + buf.len())
             .map_err(|e| Error::new(io::ErrorKind::InvalidData, e))?;
 
-        indices.data.insert(length, offsets);
+        indices.data.insert(length, offset);
         indices.length += 1;
         indices.total_bytes += buf.len();
 
         let index_bytes = unsafe { *(&length as *const _ as *const [u8; 8]) };
-        let offsets = offsets.as_bytes();
+        let offset = offset.as_bytes();
 
         self.indices_file.write_all(&index_bytes).await?;
-        self.indices_file.write_all(offsets).await?;
+        self.indices_file.write_all(offset).await?;
 
         Ok(buf.len())
     }
