@@ -16,7 +16,7 @@ pub struct SegmentationManager {
 }
 
 impl SegmentationManager {
-    pub async fn new(directory: Directory) -> io::Result<Arc<Mutex<Self>>> {
+    pub async fn new(directory: &Directory) -> io::Result<Arc<Mutex<Self>>> {
         let latest_indices_segment = Segment::new(
             &directory,
             crate::directory::DataType::Indices,
@@ -39,7 +39,7 @@ impl SegmentationManager {
         Ok(Arc::new(Mutex::new(Self {
             indices_segments,
             partition_segments,
-            directory,
+            directory: directory.clone(),
         })))
     }
 

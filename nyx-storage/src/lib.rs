@@ -51,13 +51,15 @@ impl Storage {
     pub async fn new(title: &str, max_queue: usize, compaction: bool) -> Result<Self, String> {
         let directory = Directory::new(title)
             .await
-            .map_err(|e| format!("Storage (directory): {}", e))?;
+            .map_err(|e| format!("Storage (Directory::new): {}", e))?;
 
         let indices = Indices::from(&directory)
             .await
             .map_err(|e| format!("Storage (Indices::from): {}", e))?;
 
-        let segmentation_manager = SegmentationManager::new(&directory).await?;
+        let segmentation_manager = SegmentationManager::new(&directory)
+            .await
+            .map_err(|e| format!("Storage (SegmentationManager::new): {}", e))?;
 
         let (write_sender, write_receiver) = bounded(max_queue);
         let (segment_sender, segment_receiver) = bounded(max_queue);
@@ -68,10 +70,8 @@ impl Storage {
 
         let write_queue_handle = async_std::task::spawn(WriteQueue::run(
             indices.clone(),
-            latest_partition_segment.clone(),
-            latest_indices_segment.clone(),
+            segmentation_manager.clone(),
             write_receiver,
-            directory.clone(),
         ));
 
         Ok(Self {
@@ -133,11 +133,11 @@ impl Storage {
 
         let mut segment_data = self
             .directory
-            .open_read(DataType::Partition, self.segments.len())
+            .open_read(DataType::Partition, offsets.segment_index())
             .await
             .map_err(|e| format!("Failed to open a segmenet: {}", e))?;
 
-        self.seek_bytes_between(offsets.start(), data_size, &mut data)
+        self.seek_bytes_between(offsets.start(), data_size, &mut segment_data)
             .await
             .map_err(|e| format!("Error in Storage (get): {}", e))
     }

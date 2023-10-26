@@ -34,4 +34,8 @@ impl Offsets {
     pub fn data_size(&self) -> usize {
         self.data_size
     }
+
+    pub fn segment_index(&self) -> usize {
+        self.segment_index
+    }
 }

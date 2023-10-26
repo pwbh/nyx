@@ -82,7 +82,7 @@ impl WriteQueue {
         let index_bytes = unsafe { *(&length as *const _ as *const [u8; 8]) };
         let offsets = offsets.as_bytes();
 
-        let latest_indices_segment = self.get_latest_segment(DataType::Indices).await?;
+        let (_, latest_indices_segment) = self.get_latest_segment(DataType::Indices).await?;
         let mut latest_indices_file = &latest_indices_segment.data;
 
         latest_indices_file.write_all(&index_bytes).await?;
@@ -96,7 +96,7 @@ impl WriteQueue {
 mod tests {
     use async_std::fs;
 
-    use crate::macros::function;
+    use crate::{directory::Directory, macros::function};
 
     use super::*;
 
