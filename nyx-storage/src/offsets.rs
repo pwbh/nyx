@@ -1,12 +1,13 @@
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[repr(C)]
 pub struct Offsets {
     start: usize,
     data_size: usize,
+    segment_index: usize,
 }
 
 impl Offsets {
-    pub fn new(start: usize, end: usize) -> Result<Self, String> {
+    pub fn new(start: usize, end: usize, segment_index: usize) -> Result<Self, String> {
         if start >= end {
             return Err(format!(
                 "Start ({}) can't be greater or equal to end ({})",
@@ -17,6 +18,7 @@ impl Offsets {
         Ok(Self {
             start,
             data_size: end - start,
+            segment_index,
         })
     }
 

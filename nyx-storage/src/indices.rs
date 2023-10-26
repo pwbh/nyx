@@ -29,7 +29,7 @@ impl Indices {
         };
 
         let mut file = match directory
-            .open_read(&crate::directory::DataType::Indices)
+            .open_read(crate::directory::DataType::Indices, 0)
             .await
         {
             Ok(file) => file,

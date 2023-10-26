@@ -10,6 +10,7 @@ use async_std::{
 
 const NYX_BASE_PATH: &str = "nyx";
 
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum DataType {
     Partition,
     Indices,
@@ -44,16 +45,16 @@ impl Directory {
         Ok(dir)
     }
 
-    fn get_file_path_by_datatype(&self, datatype: &DataType) -> io::Result<String> {
+    pub fn get_file_path(&self, datatype: DataType, count: usize) -> io::Result<String> {
         let base_path = self.get_base_path()?;
 
         match datatype {
-            DataType::Partition => Ok(format!("{}/{}.data", base_path, self.title)),
-            DataType::Indices => Ok(format!("{}/{}.index", base_path, self.title)),
+            DataType::Partition => Ok(format!("{}/{}_seg_{}.data", base_path, self.title, count)),
+            DataType::Indices => Ok(format!("{}/{}_seg_{}.index", base_path, self.title, count)),
         }
     }
 
-    fn get_base_path(&self) -> io::Result<String> {
+    pub fn get_base_path(&self) -> io::Result<String> {
         let mut final_dir = Some(String::new());
 
         let base_path = self.base_path.clone();
@@ -72,35 +73,26 @@ impl Directory {
         final_dir.ok_or(Error::new(ErrorKind::NotFound, "Couldn't get the systems home directory. Please setup a HOME env variable and pass your system's home directory there.".to_string()))
     }
 
-    pub async fn create_segment(&self) -> io::Result<File> {
-        let path = self.get_base_path()?;
-
-        OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(path)
-            .await
-    }
-
-    pub async fn create_file(&self, datatype: &DataType) -> io::Result<()> {
-        let path = self.get_file_path_by_datatype(datatype)?;
+    pub async fn create_file(&self, datatype: DataType, count: usize) -> io::Result<()> {
+        let path = self.get_file_path(datatype, count)?;
         File::create(path).await?;
         Ok(())
     }
 
-    pub async fn create_all(&self) -> io::Result<()> {
-        self.create_file(&DataType::Indices).await?;
-        self.create_file(&DataType::Partition).await
+    /// Creates a file for Indices and Partition
+    pub async fn create_all(&self, count: usize) -> io::Result<()> {
+        self.create_file(DataType::Indices, count).await?;
+        self.create_file(DataType::Partition, count).await
     }
 
-    pub async fn open_read(&self, datatype: &DataType) -> io::Result<File> {
-        let path = self.get_file_path_by_datatype(datatype)?;
+    pub async fn open_read(&self, datatype: DataType, count: usize) -> io::Result<File> {
+        let path = self.get_file_path(datatype, count)?;
         OpenOptions::new().read(true).open(path).await
     }
 
-    pub async fn open_write(&self, datatype: &DataType) -> io::Result<File> {
+    pub async fn open_write(&self, datatype: DataType, count: usize) -> io::Result<File> {
         let path = self
-            .get_file_path_by_datatype(datatype)
+            .get_file_path(datatype, count)
             .map_err(|e| Error::new(ErrorKind::NotFound, e))?;
         OpenOptions::new()
             .append(true)
@@ -109,8 +101,8 @@ impl Directory {
             .await
     }
 
-    pub async fn delete_file(&self, datatype: &DataType) -> io::Result<()> {
-        let path = self.get_file_path_by_datatype(datatype)?;
+    pub async fn delete_file(&self, datatype: DataType, count: usize) -> io::Result<()> {
+        let path = self.get_file_path(datatype, count)?;
         fs::remove_file(&path).await
     }
 
@@ -130,11 +122,12 @@ mod tests {
         let dir = Directory::new("events-replica-1").await.unwrap();
 
         // Opening non-existing file is not possible in read-mode only
-        let open_partition_result = dir.open_read(&DataType::Partition).await;
+        let open_partition_result = dir.open_read(DataType::Partition, 0).await;
 
         assert!(open_partition_result.is_err());
 
-        let open_indices_result = dir.open_read(&DataType::Indices).await;
+        // Opening non-existing file is not possible in read-mode only
+        let open_indices_result = dir.open_read(DataType::Indices, 0).await;
 
         assert!(open_indices_result.is_err());
     }
@@ -143,19 +136,19 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     async fn open_write_and_delete() {
         let dir = Directory::new("events-replica-2").await.unwrap();
-        let open_partition_result = dir.open_write(&DataType::Partition).await;
+        let open_partition_result = dir.open_write(DataType::Partition, 0).await;
 
         assert!(open_partition_result.is_ok());
 
-        let open_indices_result = dir.open_write(&DataType::Indices).await;
+        let open_indices_result = dir.open_write(DataType::Indices, 0).await;
 
         assert!(open_indices_result.is_ok());
 
-        let delete_partition_result = dir.delete_file(&DataType::Partition).await;
+        let delete_partition_result = dir.delete_file(DataType::Partition, 0).await;
 
         assert!(delete_partition_result.is_ok());
 
-        let delete_indices_result = dir.delete_file(&DataType::Indices).await;
+        let delete_indices_result = dir.delete_file(DataType::Indices, 0).await;
 
         assert!(delete_indices_result.is_ok());
     }

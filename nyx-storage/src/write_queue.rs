@@ -3,31 +3,26 @@ use std::{
     sync::Arc,
 };
 
-use async_std::{channel::Receiver, fs::File, io::WriteExt, sync::Mutex};
+use async_std::{channel::Receiver, io::WriteExt, sync::Mutex};
 
-use crate::{directory::Directory, offsets::Offsets, Indices};
+use crate::{
+    directory::DataType, offsets::Offsets, segment::Segment,
+    segmentation_manager::SegmentationManager, Indices, MAX_SEGMENT_SIZE,
+};
 
 #[derive(Debug)]
 pub struct WriteQueue {
-    partition_file: File,
-    pub indices_file: File,
     indices: Arc<Mutex<Indices>>,
+    segmentation_manager: Arc<Mutex<SegmentationManager>>,
 }
 
 impl WriteQueue {
     pub async fn run(
         indices: Arc<Mutex<Indices>>,
+        segmentation_manager: Arc<Mutex<SegmentationManager>>,
         queue: Receiver<Vec<u8>>,
-        directory: Directory,
     ) -> io::Result<()> {
-        let indices_file = directory
-            .open_write(&crate::directory::DataType::Indices)
-            .await?;
-        let partition_file = directory
-            .open_write(&crate::directory::DataType::Partition)
-            .await?;
-
-        let mut write_queue = Self::new(indices, indices_file, partition_file).await?;
+        let mut write_queue = Self::new(indices, segmentation_manager);
 
         while let Ok(data) = queue.recv().await {
             write_queue.append(&data[..]).await?;
@@ -36,38 +31,62 @@ impl WriteQueue {
         Ok(())
     }
 
-    async fn new(
+    fn new(
         indices: Arc<Mutex<Indices>>,
-        indices_file: File,
-        partition_file: File,
-    ) -> io::Result<Self> {
-        Ok(Self {
+        segmentation_manager: Arc<Mutex<SegmentationManager>>,
+    ) -> Self {
+        Self {
             indices,
-            partition_file,
-            indices_file,
-        })
+            segmentation_manager,
+        }
+    }
+
+    async fn get_latest_segment(
+        &mut self,
+        data_type: DataType,
+    ) -> io::Result<(usize, Arc<Segment>)> {
+        let mut segmentation_manager = self.segmentation_manager.lock().await;
+
+        let segment_count = segmentation_manager.get_last_segment_count(data_type);
+        // This is safe we should always have a valid segment.
+        let latest_segment = segmentation_manager.get_last_segment(data_type).unwrap();
+
+        let latest_segment = if latest_segment.data.metadata().await?.len() >= MAX_SEGMENT_SIZE {
+            segmentation_manager.create_segment(data_type).await?
+        } else {
+            latest_segment
+        };
+
+        Ok((segment_count, latest_segment))
     }
 
     async fn append(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.partition_file.write(buf).await?;
+        let (latest_segment_count, latest_partition_segment) =
+            self.get_latest_segment(DataType::Partition).await?;
+        let mut latest_partition_file = &latest_partition_segment.data;
+
+        latest_partition_file.write_all(buf).await?;
 
         let mut indices = self.indices.lock().await;
 
         let length = indices.length;
         let total_bytes = indices.total_bytes;
 
-        let offsets = Offsets::new(total_bytes, total_bytes + buf.len())
+        let offsets = Offsets::new(total_bytes, total_bytes + buf.len(), latest_segment_count)
             .map_err(|e| Error::new(io::ErrorKind::InvalidData, e))?;
 
-        indices.data.insert(length, offsets);
+        indices.data.insert(length, offsets.clone());
         indices.length += 1;
         indices.total_bytes += buf.len();
 
         let index_bytes = unsafe { *(&length as *const _ as *const [u8; 8]) };
         let offsets = offsets.as_bytes();
 
-        self.indices_file.write_all(&index_bytes).await?;
-        self.indices_file.write_all(offsets).await?;
+        let latest_indices_segment = self.get_latest_segment(DataType::Indices).await?;
+        let mut latest_indices_file = &latest_indices_segment.data;
+
+        latest_indices_file.write_all(&index_bytes).await?;
+        latest_indices_file.write_all(offsets).await?;
 
         Ok(buf.len())
     }

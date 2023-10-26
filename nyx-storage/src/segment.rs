@@ -1,28 +1,33 @@
-use async_std::{fs, io};
+use async_std::{fs::File, io};
 
-use crate::directory::Directory;
+use crate::directory::{DataType, Directory};
 
-pub enum SegementKind {
-    Indices,
-    Offsets,
-}
-
+#[derive(Debug)]
 pub struct Segment {
-    directory: Directory,
-    frozen: bool,
-    max_size: u16,
-    kind: SegementKind,
+    clean: bool,
+    length: u64,
+    pub data: File,
+    pub location: String,
 }
 
 impl Segment {
-    pub async fn new(title: &str, kind: SegementKind, max_size: u16) -> io::Result<Self> {
-        let directory = Directory::new(title).await?;
+    pub async fn new(
+        directory: &Directory,
+        data_type: DataType,
+        length: u64,
+        count: usize,
+    ) -> io::Result<Self> {
+        let data = directory
+            .open_write(crate::directory::DataType::Partition, count)
+            .await?;
+
+        let location = directory.get_file_path(data_type, count)?;
 
         Ok(Self {
-            directory,
-            max_size,
-            frozen: false,
-            kind,
+            length,
+            clean: false,
+            data,
+            location,
         })
     }
 }

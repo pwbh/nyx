@@ -11,9 +11,10 @@ use async_std::{
     task::JoinHandle,
 };
 use compactor::Compactor;
-use directory::Directory;
+use directory::{DataType, Directory};
 use indices::Indices;
 use segment::Segment;
+use segmentation_manager::SegmentationManager;
 use storage_sender::StorageSender;
 use write_queue::WriteQueue;
 
@@ -22,20 +23,21 @@ mod indices;
 mod macros;
 mod offsets;
 mod segment;
+mod segmentation_manager;
 mod storage_sender;
 mod write_queue;
 
 pub mod directory;
 
 const BUFFER_MAX_SIZE: usize = 4096;
+const MAX_SEGMENT_SIZE: u64 = 2_000_000_000;
 
 /// NOTE: Each partition of a topic should have a Storage for the data it stores
 #[derive(Debug)]
 pub struct Storage {
     pub directory: Directory,
     indices: Arc<Mutex<Indices>>,
-    // Partition data in read mode only
-    data: File,
+    segmentation_manager: Arc<Mutex<SegmentationManager>>,
     // TODO: When Storage will be accessed concurrently each concurrent accessor (consumer) should have a
     // `retrievable_buffer` of its own to read into instead.
     retrivable_buffer: [u8; BUFFER_MAX_SIZE],
@@ -51,19 +53,11 @@ impl Storage {
             .await
             .map_err(|e| format!("Storage (directory): {}", e))?;
 
-        directory
-            .create_all()
-            .await
-            .map_err(|e| format!("String (create_all): {}", e))?;
-
         let indices = Indices::from(&directory)
             .await
             .map_err(|e| format!("Storage (Indices::from): {}", e))?;
 
-        let data: File = directory
-            .open_read(&directory::DataType::Partition)
-            .await
-            .map_err(|e| format!("Storage (open_read): {}", e))?;
+        let segmentation_manager = SegmentationManager::new(&directory).await?;
 
         let (write_sender, write_receiver) = bounded(max_queue);
         let (segment_sender, segment_receiver) = bounded(max_queue);
@@ -74,6 +68,8 @@ impl Storage {
 
         let write_queue_handle = async_std::task::spawn(WriteQueue::run(
             indices.clone(),
+            latest_partition_segment.clone(),
+            latest_indices_segment.clone(),
             write_receiver,
             directory.clone(),
         ));
@@ -81,7 +77,7 @@ impl Storage {
         Ok(Self {
             directory,
             indices,
-            data,
+            segmentation_manager,
             retrivable_buffer: [0; BUFFER_MAX_SIZE],
             write_sender,
             segment_sender,
@@ -120,7 +116,7 @@ impl Storage {
         let offsets = indices
             .data
             .get(&index)
-            .copied()
+            .cloned()
             .ok_or("record doesn't exist.".to_string())?;
 
         drop(indices);
@@ -135,18 +131,25 @@ impl Storage {
             ));
         }
 
-        self.seek_bytes_between(offsets.start(), data_size)
+        let mut segment_data = self
+            .directory
+            .open_read(DataType::Partition, self.segments.len())
+            .await
+            .map_err(|e| format!("Failed to open a segmenet: {}", e))?;
+
+        self.seek_bytes_between(offsets.start(), data_size, &mut data)
             .await
             .map_err(|e| format!("Error in Storage (get): {}", e))
     }
 
-    async fn seek_bytes_between(&mut self, start: usize, data_size: usize) -> io::Result<&[u8]> {
-        self.data.seek(SeekFrom::Start(start as u64)).await?;
-
-        self.data
-            .read(&mut self.retrivable_buffer[..data_size])
-            .await?;
-
+    async fn seek_bytes_between(
+        &mut self,
+        start: usize,
+        data_size: usize,
+        data: &mut File,
+    ) -> io::Result<&[u8]> {
+        data.seek(SeekFrom::Start(start as u64)).await?;
+        data.read(&mut self.retrivable_buffer[..data_size]).await?;
         Ok(&self.retrivable_buffer[..data_size])
     }
 }
