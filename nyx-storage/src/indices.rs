@@ -1,18 +1,15 @@
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use async_std::{
     io::{self, prelude::SeekExt, ReadExt, WriteExt},
     sync::Mutex,
 };
 
-use crate::{directory::Directory, offsets::Offsets};
+use crate::{directory::Directory, offset::Offset};
 
 #[derive(Debug)]
 pub struct Indices {
-    pub data: HashMap<usize, Offsets>,
+    pub data: HashMap<usize, Offset>,
     pub length: usize,
     pub total_bytes: usize,
 }
@@ -75,14 +72,9 @@ impl Indices {
                 buf[24], buf[25], buf[26], buf[27], buf[28], buf[29], buf[30], buf[31],
             ]);
 
-            match indices.data.entry(index) {
-                Entry::Occupied(_) => {
-                    panic!("Something wen't wrong - index {} is already taken. Please open an issue on our Github about this.", index)
-                }
-                Entry::Vacant(entry) => {
-                    entry.insert(Offsets::from(start, data_size, segment_index));
-                }
-            }
+            indices
+                .data
+                .insert(index, Offset::from(start, data_size, segment_index));
         }
 
         Ok(Arc::new(Mutex::new(indices)))
@@ -99,7 +91,7 @@ mod tests {
     use super::*;
 
     async fn create_test_data(directory: &Directory) {
-        let offset = Offsets::new(15, 2500, 0).unwrap();
+        let offset = Offset::new(15, 2500, 0).unwrap();
         let offsets = [offset; 50];
 
         let mut file = directory

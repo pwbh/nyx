@@ -6,7 +6,7 @@ use std::{
 use async_std::{channel::Receiver, io::WriteExt, sync::Mutex};
 
 use crate::{
-    directory::DataType, offsets::Offsets, segment::Segment,
+    directory::DataType, offset::Offset, segment::Segment,
     segmentation_manager::SegmentationManager, Indices, MAX_SEGMENT_SIZE,
 };
 
@@ -73,23 +73,23 @@ impl WriteQueue {
         let length = indices.length;
         let total_bytes = indices.total_bytes;
 
-        let offsets = Offsets::new(total_bytes, total_bytes + buf.len(), latest_segment_count)
+        let offset = Offset::new(total_bytes, total_bytes + buf.len(), latest_segment_count)
             .map_err(|e: String| Error::new(io::ErrorKind::InvalidData, e))?;
 
-        indices.data.insert(length, offsets.clone());
+        indices.data.insert(length, offset);
         indices.length += 1;
         indices.total_bytes += buf.len();
 
         drop(indices);
 
         let index_bytes = unsafe { *(&length as *const _ as *const [u8; 8]) };
-        let offsets = offsets.as_bytes();
+        let offset = offset.as_bytes();
 
         let (_, latest_indices_segment) = self.get_latest_segment(DataType::Indices).await?;
         let mut latest_indices_file = &latest_indices_segment.data;
 
         latest_indices_file.write_all(&index_bytes).await?;
-        latest_indices_file.write_all(offsets).await?;
+        latest_indices_file.write_all(offset).await?;
 
         Ok(buf.len())
     }

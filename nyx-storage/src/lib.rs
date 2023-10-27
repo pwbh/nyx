@@ -21,7 +21,7 @@ use write_queue::WriteQueue;
 mod compactor;
 mod indices;
 mod macros;
-mod offsets;
+mod offset;
 mod segment;
 mod segmentation_manager;
 mod storage_sender;
