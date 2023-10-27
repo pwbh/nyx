@@ -10,70 +10,79 @@ use async_std::{
     sync::Mutex,
     task::JoinHandle,
 };
-use directory::Directory;
+use compactor::Compactor;
+use directory::{DataType, Directory};
 use indices::Indices;
+use segment::Segment;
+use segmentation_manager::SegmentationManager;
 use storage_sender::StorageSender;
 use write_queue::WriteQueue;
 
+mod compactor;
 mod indices;
 mod macros;
 mod offset;
+mod segment;
+mod segmentation_manager;
 mod storage_sender;
 mod write_queue;
 
 pub mod directory;
 
 const BUFFER_MAX_SIZE: usize = 4096;
+const MAX_SEGMENT_SIZE: u64 = 2_000_000_000;
 
 /// NOTE: Each partition of a topic should have a Storage for the data it stores
 #[derive(Debug)]
 pub struct Storage {
     pub directory: Directory,
     indices: Arc<Mutex<Indices>>,
-    // Partition data in read mode only
-    data: File,
+    segmentation_manager: Arc<Mutex<SegmentationManager>>,
     // TODO: When Storage will be accessed concurrently each concurrent accessor (consumer) should have a
     // `retrievable_buffer` of its own to read into instead.
     retrivable_buffer: [u8; BUFFER_MAX_SIZE],
     write_sender: Sender<Vec<u8>>,
-    pub write_queue_handle: JoinHandle<Result<(), std::io::Error>>,
+    segment_sender: Sender<Segment>,
+    write_queue_handle: JoinHandle<Result<(), std::io::Error>>,
+    compaction: bool,
 }
 
 impl Storage {
-    pub async fn new(title: &str, max_queue: usize) -> Result<Self, String> {
+    pub async fn new(title: &str, max_queue: usize, compaction: bool) -> Result<Self, String> {
         let directory = Directory::new(title)
             .await
-            .map_err(|e| format!("Storage (directory): {}", e))?;
-
-        directory
-            .create_all()
-            .await
-            .map_err(|e| format!("String (create_all): {}", e))?;
+            .map_err(|e| format!("Storage (Directory::new): {}", e))?;
 
         let indices = Indices::from(&directory)
             .await
             .map_err(|e| format!("Storage (Indices::from): {}", e))?;
 
-        let data: File = directory
-            .open_read(&directory::DataType::Partition)
+        let segmentation_manager = SegmentationManager::new(&directory)
             .await
-            .map_err(|e| format!("Storage (open_read): {}", e))?;
+            .map_err(|e| format!("Storage (SegmentationManager::new): {}", e))?;
 
         let (write_sender, write_receiver) = bounded(max_queue);
+        let (segment_sender, segment_receiver) = bounded(max_queue);
+
+        if compaction {
+            async_std::task::spawn(Compactor::run(segment_receiver));
+        }
 
         let write_queue_handle = async_std::task::spawn(WriteQueue::run(
             indices.clone(),
+            segmentation_manager.clone(),
             write_receiver,
-            directory.clone(),
         ));
 
         Ok(Self {
             directory,
             indices,
-            data,
+            segmentation_manager,
             retrivable_buffer: [0; BUFFER_MAX_SIZE],
             write_sender,
+            segment_sender,
             write_queue_handle,
+            compaction,
         })
     }
 
@@ -107,12 +116,12 @@ impl Storage {
         let offsets = indices
             .data
             .get(&index)
-            .copied()
+            .cloned()
             .ok_or("record doesn't exist.".to_string())?;
 
         drop(indices);
 
-        let data_size = offsets.size();
+        let data_size = offsets.data_size();
 
         if data_size > self.retrivable_buffer.len() {
             return Err(format!(
@@ -122,18 +131,25 @@ impl Storage {
             ));
         }
 
-        self.seek_bytes_between(offsets.start(), data_size)
+        let mut segment_data = self
+            .directory
+            .open_read(DataType::Partition, offsets.segment_index())
+            .await
+            .map_err(|e| format!("Failed to open a segmenet: {}", e))?;
+
+        self.seek_bytes_between(offsets.start(), data_size, &mut segment_data)
             .await
             .map_err(|e| format!("Error in Storage (get): {}", e))
     }
 
-    async fn seek_bytes_between(&mut self, start: usize, data_size: usize) -> io::Result<&[u8]> {
-        self.data.seek(SeekFrom::Start(start as u64)).await?;
-
-        self.data
-            .read(&mut self.retrivable_buffer[..data_size])
-            .await?;
-
+    async fn seek_bytes_between(
+        &mut self,
+        start: usize,
+        data_size: usize,
+        data: &mut File,
+    ) -> io::Result<&[u8]> {
+        data.seek(SeekFrom::Start(start as u64)).await?;
+        data.read(&mut self.retrivable_buffer[..data_size]).await?;
         Ok(&self.retrivable_buffer[..data_size])
     }
 }
@@ -156,7 +172,7 @@ mod tests {
         count: usize,
         wait_ms: u64,
     ) -> Storage {
-        let mut storage = Storage::new(title, 10_000).await.unwrap();
+        let mut storage = Storage::new(title, 10_000, false).await.unwrap();
 
         let messages = vec![test_message; count];
 
@@ -182,7 +198,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     async fn new_creates_instances() {
         // (l)eader/(r)eplica_topic-name_partition-count
-        let storage = Storage::new("TEST_l_reservations_1", 10_000).await;
+        let storage = Storage::new("TEST_l_reservations_1", 10_000, false).await;
 
         assert!(storage.is_ok());
     }
@@ -190,9 +206,9 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_returns_ok() {
-        let test_message = b"hello world hello world hello worldrld hello worldrld hello worl";
+        let test_message = b"hello world";
 
-        let mut storage = setup_test_storage(&function!(), test_message, 1_000, 100).await;
+        let mut storage = setup_test_storage(&function!(), test_message, 1_000, 150).await;
 
         let indices = storage.indices.lock().await;
         let length = indices.length;
@@ -204,6 +220,7 @@ mod tests {
             let message = storage.get(index).await;
 
             assert!(message.is_ok());
+
             assert_eq!(message.unwrap(), test_message);
         }
 

@@ -1,8 +1,4 @@
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    io::Error,
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 
 use async_std::{
     io::{self, prelude::SeekExt, ReadExt, WriteExt},
@@ -18,7 +14,7 @@ pub struct Indices {
     pub total_bytes: usize,
 }
 
-const INDEX_SIZE: usize = 24;
+const INDEX_SIZE: usize = 32;
 
 impl Indices {
     pub async fn from(directory: &Directory) -> io::Result<Arc<Mutex<Self>>> {
@@ -29,7 +25,7 @@ impl Indices {
         };
 
         let mut file = match directory
-            .open_read(&crate::directory::DataType::Indices)
+            .open_read(crate::directory::DataType::Indices, 0)
             .await
         {
             Ok(file) => file,
@@ -50,12 +46,14 @@ impl Indices {
 
             file.seek(io::SeekFrom::Current(INDEX_SIZE as i64));
 
-            println!("buf: {:?}", &buf,);
+            println!("buf: {:?}", &buf);
+
             println!(
-                "index: {:?} start: {:?} end: {:?}",
+                "index: {:?} start: {:?} data_size: {:?} segment_index: {:?}",
                 &buf[0..8],
                 &buf[8..16],
-                &buf[16..24]
+                &buf[16..24],
+                &buf[24..32]
             );
 
             let index = usize::from_le_bytes([
@@ -66,20 +64,17 @@ impl Indices {
                 buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
             ]);
 
-            let end = usize::from_le_bytes([
+            let data_size = usize::from_le_bytes([
                 buf[16], buf[17], buf[18], buf[19], buf[20], buf[21], buf[22], buf[23],
             ]);
 
-            match indices.data.entry(index) {
-                Entry::Occupied(_) => {
-                    panic!("Something wen't wrong - index {} is already taken. Please open an issue on our Github about this.", index)
-                }
-                Entry::Vacant(entry) => {
-                    let offset = Offset::new(start, end)
-                        .map_err(|e| Error::new(io::ErrorKind::InvalidData, e))?;
-                    entry.insert(offset);
-                }
-            }
+            let segment_index = usize::from_le_bytes([
+                buf[24], buf[25], buf[26], buf[27], buf[28], buf[29], buf[30], buf[31],
+            ]);
+
+            indices
+                .data
+                .insert(index, Offset::from(start, data_size, segment_index));
         }
 
         Ok(Arc::new(Mutex::new(indices)))
@@ -96,11 +91,11 @@ mod tests {
     use super::*;
 
     async fn create_test_data(directory: &Directory) {
-        let offset = Offset::new(15, 2500).unwrap();
+        let offset = Offset::new(15, 2500, 0).unwrap();
         let offsets = [offset; 50];
 
         let mut file = directory
-            .open_write(&crate::directory::DataType::Indices)
+            .open_write(crate::directory::DataType::Indices, 0)
             .await
             .unwrap();
 
@@ -130,7 +125,7 @@ mod tests {
         assert!(indices_result.is_ok());
 
         directory
-            .delete_file(&crate::directory::DataType::Indices)
+            .delete_file(crate::directory::DataType::Indices, 0)
             .await
             .unwrap();
     }
