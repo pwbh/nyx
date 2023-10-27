@@ -17,9 +17,7 @@ impl Segment {
         length: u64,
         count: usize,
     ) -> io::Result<Self> {
-        let data = directory
-            .open_write(crate::directory::DataType::Partition, count)
-            .await?;
+        let data = directory.open_write(data_type, count).await?;
 
         let location = directory.get_file_path(data_type, count)?;
 
