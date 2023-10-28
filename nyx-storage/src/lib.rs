@@ -1,7 +1,4 @@
-use std::{
-    io::{self},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use async_std::{
     channel::{bounded, Sender},
@@ -29,8 +26,8 @@ mod write_queue;
 
 pub mod directory;
 
-const BUFFER_MAX_SIZE: usize = 4096;
-const MAX_SEGMENT_SIZE: u64 = 2_000_000_000;
+const MAX_BUFFER_SIZE: usize = 4096;
+const MAX_SEGMENT_SIZE: u64 = 4_000_000_000;
 
 /// NOTE: Each partition of a topic should have a Storage for the data it stores
 #[derive(Debug)]
@@ -38,7 +35,7 @@ pub struct Storage {
     pub directory: Directory,
     indices: Arc<Mutex<Indices>>,
     segmentation_manager: Arc<Mutex<SegmentationManager>>,
-    retrivable_buffer: [u8; BUFFER_MAX_SIZE],
+    retrivable_buffer: [u8; MAX_BUFFER_SIZE],
     write_sender: Sender<Vec<u8>>,
     segment_sender: Sender<Segment>,
     write_queue_handle: JoinHandle<Result<(), std::io::Error>>,
@@ -76,7 +73,7 @@ impl Storage {
             directory,
             indices,
             segmentation_manager,
-            retrivable_buffer: [0; BUFFER_MAX_SIZE],
+            retrivable_buffer: [0; MAX_BUFFER_SIZE],
             write_sender,
             segment_sender,
             write_queue_handle,
@@ -100,44 +97,25 @@ impl Storage {
         indices.data.len()
     }
 
-    pub async fn get(&mut self, index: usize) -> Result<&[u8], String> {
+    pub async fn get(&mut self, index: usize) -> Option<&[u8]> {
         // TODO: Think of a better way to do this, maybe able to get rid of the lock somehow
         // and still be safe.
         let indices = self.indices.lock().await;
 
-        let length = indices.length;
-
-        if index >= length {
-            return Err(format!("Out of bounds requested data at index {}", index));
-        }
-
-        let offsets = indices
-            .data
-            .get(&index)
-            .cloned()
-            .ok_or("record doesn't exist.".to_string())?;
+        let offsets = indices.data.get(&index).cloned()?;
 
         drop(indices);
 
         let data_size = offsets.data_size();
 
-        if data_size > self.retrivable_buffer.len() {
-            return Err(format!(
-                "Seeked data size: {} kb maximum retrivable size {} kb",
-                data_size,
-                self.retrivable_buffer.len()
-            ));
-        }
-
         let mut segment_data = self
             .directory
             .open_read(DataType::Partition, offsets.segment_index())
             .await
-            .map_err(|e| format!("Failed to open a segmenet: {}", e))?;
+            .ok()?;
 
         self.seek_bytes_between(offsets.start(), data_size, &mut segment_data)
             .await
-            .map_err(|e| format!("Error in Storage (get): {}", e))
     }
 
     async fn seek_bytes_between(
@@ -145,10 +123,12 @@ impl Storage {
         start: usize,
         data_size: usize,
         data: &mut File,
-    ) -> io::Result<&[u8]> {
-        data.seek(SeekFrom::Start(start as u64)).await?;
-        data.read(&mut self.retrivable_buffer[..data_size]).await?;
-        Ok(&self.retrivable_buffer[..data_size])
+    ) -> Option<&[u8]> {
+        data.seek(SeekFrom::Start(start as u64)).await.ok()?;
+        data.read(&mut self.retrivable_buffer[..data_size])
+            .await
+            .ok()?;
+        Some(&self.retrivable_buffer[..data_size])
     }
 }
 
@@ -204,9 +184,10 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_returns_ok() {
-        let test_message = b"hello world";
+        let message_count = 5_000_000;
+        let test_message = b"abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcd";
 
-        let mut storage = setup_test_storage(&function!(), test_message, 1_000, 150).await;
+        let mut storage = setup_test_storage(&function!(), test_message, message_count, 1600).await;
 
         let indices = storage.indices.lock().await;
         let length = indices.length;
@@ -217,8 +198,7 @@ mod tests {
         for index in 0..length {
             let message = storage.get(index).await;
 
-            assert!(message.is_ok());
-
+            assert!(message.is_some());
             assert_eq!(message.unwrap(), test_message);
         }
 
@@ -226,7 +206,13 @@ mod tests {
 
         println!("Read {} messages in: {:.2?}", length, elapsed);
 
-        cleanup(&storage).await;
+        let indices = storage.indices.lock().await;
+        let length = indices.length;
+        drop(indices);
+
+        assert_eq!(length, message_count);
+
+        //  cleanup(&storage).await;
     }
 
     #[async_std::test]
@@ -240,7 +226,7 @@ mod tests {
 
         let get_result = storage.get(total_count).await;
 
-        assert!(get_result.is_err());
+        assert_eq!(get_result, None);
 
         cleanup(&storage).await;
     }

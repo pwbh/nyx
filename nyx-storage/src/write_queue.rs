@@ -7,7 +7,7 @@ use async_std::{channel::Receiver, io::WriteExt, sync::Mutex};
 
 use crate::{
     directory::DataType, offset::Offset, segment::Segment,
-    segmentation_manager::SegmentationManager, Indices, MAX_SEGMENT_SIZE,
+    segmentation_manager::SegmentationManager, Indices, MAX_BUFFER_SIZE, MAX_SEGMENT_SIZE,
 };
 
 #[derive(Debug)]
@@ -61,6 +61,17 @@ impl WriteQueue {
     }
 
     async fn append(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if buf.len() > MAX_BUFFER_SIZE {
+            return Err(Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "buf size: {} kb maximum buffer size {} kb",
+                    buf.len(),
+                    MAX_BUFFER_SIZE
+                ),
+            ));
+        }
+
         let (latest_segment_count, latest_partition_segment) =
             self.get_latest_segment(DataType::Partition).await?;
 
