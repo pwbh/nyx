@@ -46,16 +46,6 @@ impl Indices {
 
             file.seek(io::SeekFrom::Current(INDEX_SIZE as i64));
 
-            println!("buf: {:?}", &buf);
-
-            println!(
-                "index: {:?} start: {:?} data_size: {:?} segment_index: {:?}",
-                &buf[0..8],
-                &buf[8..16],
-                &buf[16..24],
-                &buf[24..32]
-            );
-
             let index = usize::from_le_bytes([
                 buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
             ]);
@@ -119,8 +109,6 @@ mod tests {
         create_test_data(&directory).await;
 
         let indices_result = Indices::from(&directory).await;
-
-        println!("{:?}", indices_result);
 
         assert!(indices_result.is_ok());
 

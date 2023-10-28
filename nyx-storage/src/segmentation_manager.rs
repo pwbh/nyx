@@ -69,7 +69,7 @@ impl SegmentationManager {
         Ok(new_segment)
     }
 
-    pub fn get_last_segment_count(&self, data_type: DataType) -> usize {
+    fn get_last_segment_count(&self, data_type: DataType) -> usize {
         if data_type == DataType::Indices {
             self.indices_segments.len() - 1
         } else {
@@ -77,7 +77,7 @@ impl SegmentationManager {
         }
     }
 
-    pub fn get_last_segment(&self, data_type: DataType) -> Option<Arc<Segment>> {
+    fn get_last_segment(&self, data_type: DataType) -> Option<Arc<Segment>> {
         let segment = if data_type == DataType::Indices {
             &self.indices_segments
         } else {
@@ -85,5 +85,22 @@ impl SegmentationManager {
         };
 
         segment.last().map(|segment| segment.clone())
+    }
+
+    pub async fn get_latest_segment(
+        &mut self,
+        data_type: DataType,
+    ) -> io::Result<(usize, Arc<Segment>)> {
+        let segment_count = self.get_last_segment_count(data_type);
+        // This is safe we should always have a valid segment otherwise best is crashing.
+        let latest_segment = self.get_last_segment(data_type).unwrap();
+
+        let latest_segment = if latest_segment.data.metadata().await?.len() >= MAX_SEGMENT_SIZE {
+            self.create_segment(data_type).await?
+        } else {
+            latest_segment
+        };
+
+        Ok((segment_count, latest_segment))
     }
 }
