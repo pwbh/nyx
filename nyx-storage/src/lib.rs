@@ -38,8 +38,6 @@ pub struct Storage {
     pub directory: Directory,
     indices: Arc<Mutex<Indices>>,
     segmentation_manager: Arc<Mutex<SegmentationManager>>,
-    // TODO: When Storage will be accessed concurrently each concurrent accessor (consumer) should have a
-    // `retrievable_buffer` of its own to read into instead.
     retrivable_buffer: [u8; BUFFER_MAX_SIZE],
     write_sender: Sender<Vec<u8>>,
     segment_sender: Sender<Segment>,
