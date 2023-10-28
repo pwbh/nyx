@@ -10,9 +10,9 @@ pub async fn main() -> Result<(), Box<dyn Error>> {
         Storage::new("simulated_partition_storage_1", 25_000, false).await?;
 
     let data =
-   [
+   vec![
         b"hello worldhello worldhello worldhello worldhello worldhello worldhello worldhello worldhello world.";
-        50
+        500_000
     ];
 
     for message in data {

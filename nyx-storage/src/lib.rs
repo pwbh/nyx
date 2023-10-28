@@ -1,15 +1,16 @@
-use std::sync::Arc;
+use std::{io::Error, sync::Arc};
 
 use async_std::{
     channel::{bounded, Sender},
     fs::File,
-    io::{prelude::SeekExt, ReadExt, SeekFrom},
+    io::{prelude::SeekExt, ReadExt, SeekFrom, WriteExt},
     sync::Mutex,
     task::JoinHandle,
 };
 use compactor::Compactor;
 use directory::{DataType, Directory};
 use indices::Indices;
+use offset::Offset;
 use segment::Segment;
 use segmentation_manager::SegmentationManager;
 use storage_sender::StorageSender;
@@ -86,10 +87,60 @@ impl Storage {
     }
 
     pub async fn set(&mut self, data: &[u8]) -> Result<(), String> {
-        self.write_sender
-            .send(data.to_vec())
+        self.append(data)
             .await
-            .map_err(|e| format!("Failed to send data: {}", e))
+            .map_err(|e| format!("Failed to send data: {}", e))?;
+        Ok(())
+    }
+
+    async fn append(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let mut segmentation_manager = self.segmentation_manager.lock().await;
+
+        if buf.len() > MAX_BUFFER_SIZE {
+            return Err(Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "buf size: {} kb maximum buffer size {} kb",
+                    buf.len(),
+                    MAX_BUFFER_SIZE
+                ),
+            ));
+        }
+
+        let (latest_segment_count, latest_partition_segment) = segmentation_manager
+            .get_latest_segment(DataType::Partition)
+            .await?;
+
+        let mut latest_partition_file = &latest_partition_segment.data;
+
+        latest_partition_file.write_all(buf).await?;
+
+        let mut indices = self.indices.lock().await;
+
+        let length = indices.length;
+        let total_bytes = indices.total_bytes;
+
+        let offset = Offset::new(total_bytes, total_bytes + buf.len(), latest_segment_count)
+            .map_err(|e: String| Error::new(std::io::ErrorKind::InvalidData, e))?;
+
+        indices.data.insert(length, offset);
+        indices.length += 1;
+        indices.total_bytes += buf.len();
+
+        drop(indices);
+
+        let index_bytes = unsafe { *(&length as *const _ as *const [u8; 8]) };
+        let offset = offset.as_bytes();
+
+        let (_, latest_indices_segment) = segmentation_manager
+            .get_latest_segment(DataType::Indices)
+            .await?;
+        let mut latest_indices_file = &latest_indices_segment.data;
+
+        latest_indices_file.write_all(&index_bytes).await?;
+        latest_indices_file.write_all(offset).await?;
+
+        Ok(buf.len())
     }
 
     pub async fn len(&self) -> usize {
