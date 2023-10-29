@@ -1,26 +1,21 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
-use async_std::{
-    io::{self, prelude::SeekExt, ReadExt, WriteExt},
-    sync::Mutex,
-};
+use async_std::io::{self, prelude::SeekExt, ReadExt, WriteExt};
 
 use crate::{directory::Directory, offset::Offset};
 
 #[derive(Debug)]
 pub struct Indices {
     pub data: HashMap<usize, Offset>,
-    pub length: usize,
     pub total_bytes: usize,
 }
 
 const INDEX_SIZE: usize = 32;
 
 impl Indices {
-    pub async fn from(directory: &Directory) -> io::Result<Arc<Mutex<Self>>> {
+    pub async fn from(directory: &Directory) -> io::Result<Self> {
         let mut indices = Self {
             data: HashMap::new(),
-            length: 0,
             total_bytes: 0,
         };
 
@@ -31,7 +26,7 @@ impl Indices {
             Ok(file) => file,
             Err(e) => {
                 println!("Warning in for indexs file: {}", e);
-                return Ok(Arc::new(Mutex::new(indices)));
+                return Ok(indices);
             }
         };
 
@@ -67,7 +62,7 @@ impl Indices {
                 .insert(index, Offset::from(start, data_size, segment_index));
         }
 
-        Ok(Arc::new(Mutex::new(indices)))
+        Ok(indices)
     }
 }
 

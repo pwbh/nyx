@@ -1,21 +1,16 @@
-use std::{io::Error, sync::Arc};
-
 use async_std::{
     channel::{bounded, Sender},
     fs::File,
-    io::{prelude::SeekExt, ReadExt, SeekFrom, WriteExt},
-    sync::Mutex,
-    task::JoinHandle,
+    io::{self, prelude::SeekExt, ReadExt, SeekFrom, WriteExt},
 };
+use batch::{Batch, BatchState};
 use compactor::Compactor;
 use directory::{DataType, Directory};
 use indices::Indices;
-use offset::Offset;
 use segment::Segment;
 use segmentation_manager::SegmentationManager;
-use storage_sender::StorageSender;
-use write_queue::WriteQueue;
 
+mod batch;
 mod compactor;
 mod indices;
 mod macros;
@@ -23,23 +18,25 @@ mod offset;
 mod segment;
 mod segmentation_manager;
 mod storage_sender;
-mod write_queue;
 
 pub mod directory;
 
-const MAX_BUFFER_SIZE: usize = 4096;
+// 4KB
+const MAX_MESSAGE_SIZE: usize = 4096;
+// 4GB
 const MAX_SEGMENT_SIZE: u64 = 4_000_000_000;
+// 16KB
+const MAX_BATCH_SIZE: usize = 16384;
 
 /// NOTE: Each partition of a topic should have a Storage for the data it stores
 #[derive(Debug)]
 pub struct Storage {
     pub directory: Directory,
-    indices: Arc<Mutex<Indices>>,
-    segmentation_manager: Arc<Mutex<SegmentationManager>>,
-    retrivable_buffer: [u8; MAX_BUFFER_SIZE],
-    write_sender: Sender<Vec<u8>>,
+    indices: Indices,
+    segmentation_manager: SegmentationManager,
+    retrivable_buffer: [u8; MAX_MESSAGE_SIZE],
+    batch: Batch,
     segment_sender: Sender<Segment>,
-    write_queue_handle: JoinHandle<Result<(), std::io::Error>>,
     compaction: bool,
 }
 
@@ -57,111 +54,115 @@ impl Storage {
             .await
             .map_err(|e| format!("Storage (SegmentationManager::new): {}", e))?;
 
-        let (write_sender, write_receiver) = bounded(max_queue);
         let (segment_sender, segment_receiver) = bounded(max_queue);
 
         if compaction {
             async_std::task::spawn(Compactor::run(segment_receiver));
         }
 
-        let write_queue_handle = async_std::task::spawn(WriteQueue::run(
-            indices.clone(),
-            segmentation_manager.clone(),
-            write_receiver,
-        ));
-
         Ok(Self {
             directory,
             indices,
             segmentation_manager,
-            retrivable_buffer: [0; MAX_BUFFER_SIZE],
-            write_sender,
+            retrivable_buffer: [0; MAX_MESSAGE_SIZE],
+            batch: Batch::new(0),
             segment_sender,
-            write_queue_handle,
             compaction,
         })
     }
 
-    pub fn get_storage_sender(&mut self) -> StorageSender {
-        StorageSender::new(self.write_sender.clone())
-    }
-
-    pub async fn set(&mut self, data: &[u8]) -> Result<(), String> {
-        self.append(data)
-            .await
-            .map_err(|e| format!("Failed to send data: {}", e))?;
-        Ok(())
-    }
-
-    async fn append(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let mut segmentation_manager = self.segmentation_manager.lock().await;
-
-        if buf.len() > MAX_BUFFER_SIZE {
-            return Err(Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!(
-                    "buf size: {} kb maximum buffer size {} kb",
-                    buf.len(),
-                    MAX_BUFFER_SIZE
-                ),
+    pub async fn set(&mut self, buf: &[u8]) -> Result<(), String> {
+        if buf.len() > MAX_MESSAGE_SIZE {
+            return Err(format!(
+                "Payload size {} kb, max payload allowed {} kb",
+                buf.len(),
+                MAX_MESSAGE_SIZE
             ));
         }
 
-        let (latest_segment_count, latest_partition_segment) = segmentation_manager
+        let latest_segment_count = self
+            .segmentation_manager
+            .get_last_segment_count(DataType::Partition);
+
+        let latest_segment_size = self
+            .segmentation_manager
+            .get_last_segment_size(DataType::Partition)
+            .await;
+
+        let batch_state = self
+            .batch
+            .add(buf, latest_segment_count, latest_segment_size)?;
+
+        if batch_state == BatchState::ShouldPrune {
+            self.flush().await?;
+            self.batch
+                .add(buf, latest_segment_count, latest_segment_size)?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn flush(&mut self) -> Result<(), String> {
+        self.prune_to_disk()
+            .await
+            .map_err(|e| format!("Storage (flush): {}", e))?;
+        self.batch.reset();
+
+        Ok(())
+    }
+
+    async fn prune_to_disk(&mut self) -> io::Result<usize> {
+        let prune = &self.batch.get_prunable();
+
+        let latest_partition_segment = self
+            .segmentation_manager
             .get_latest_segment(DataType::Partition)
             .await?;
 
         let mut latest_partition_file = &latest_partition_segment.data;
 
-        latest_partition_file.write_all(buf).await?;
+        latest_partition_file.write_all(prune.buffer).await?;
 
-        let mut indices = self.indices.lock().await;
+        for offset in prune.offsets {
+            let length = self.indices.data.len();
+            // println!("Inserting offset {:?} at index {}", offset, length);
+            self.indices.data.insert(length, offset.clone());
 
-        let length = indices.length;
-        let total_bytes = indices.total_bytes;
+            let index_bytes = unsafe { *(&length as *const _ as *const [u8; 8]) };
+            let offset = offset.as_bytes();
 
-        let offset = Offset::new(total_bytes, total_bytes + buf.len(), latest_segment_count)
-            .map_err(|e: String| Error::new(std::io::ErrorKind::InvalidData, e))?;
+            let latest_indices_segment = self
+                .segmentation_manager
+                .get_latest_segment(DataType::Indices)
+                .await?;
 
-        indices.data.insert(length, offset);
-        indices.length += 1;
-        indices.total_bytes += buf.len();
+            let mut latest_indices_file = &latest_indices_segment.data;
 
-        drop(indices);
+            latest_indices_file.write_all(&index_bytes).await?;
+            latest_indices_file.write_all(offset).await?;
+        }
 
-        let index_bytes = unsafe { *(&length as *const _ as *const [u8; 8]) };
-        let offset = offset.as_bytes();
-
-        let (_, latest_indices_segment) = segmentation_manager
-            .get_latest_segment(DataType::Indices)
-            .await?;
-        let mut latest_indices_file = &latest_indices_segment.data;
-
-        latest_indices_file.write_all(&index_bytes).await?;
-        latest_indices_file.write_all(offset).await?;
-
-        Ok(buf.len())
+        Ok(prune.buffer.len())
     }
 
-    pub async fn len(&self) -> usize {
-        let indices: async_std::sync::MutexGuard<'_, Indices> = self.indices.lock().await;
-        indices.data.len()
+    pub fn len(&self) -> usize {
+        self.indices.data.len()
     }
 
     pub async fn get(&mut self, index: usize) -> Option<&[u8]> {
         // TODO: Think of a better way to do this, maybe able to get rid of the lock somehow
         // and still be safe.
-        let indices = self.indices.lock().await;
+        if index >= self.indices.data.len() {
+            return None;
+        }
 
-        let offsets = indices.data.get(&index).cloned()?;
-
-        drop(indices);
+        let offsets = self.indices.data.get(&index).cloned()?;
 
         let data_size = offsets.data_size();
 
         let mut segment_data = self
             .directory
-            .open_read(DataType::Partition, offsets.segment_index())
+            .open_read(DataType::Partition, offsets.segment_count())
             .await
             .ok()?;
 
@@ -185,7 +186,7 @@ impl Storage {
 
 #[cfg(test)]
 mod tests {
-    use std::time::{Duration, Instant};
+    use std::time::Instant;
 
     use crate::macros::function;
 
@@ -195,12 +196,7 @@ mod tests {
         storage.directory.delete_all().await.unwrap();
     }
 
-    async fn setup_test_storage(
-        title: &str,
-        test_message: &[u8],
-        count: usize,
-        wait_ms: u64,
-    ) -> Storage {
+    async fn setup_test_storage(title: &str, test_message: &[u8], count: usize) -> Storage {
         let mut storage = Storage::new(title, 10_000, false).await.unwrap();
 
         let messages = vec![test_message; count];
@@ -215,10 +211,10 @@ mod tests {
 
         println!("Write {} messages in: {:.2?}", count, elapsed);
 
-        // wait for the message to arrive from the queue
-        async_std::task::sleep(Duration::from_millis(wait_ms)).await;
+        // Make sure all messages are written to the disk before we continue with our tests
+        storage.flush().await.unwrap();
 
-        assert_eq!(storage.len().await, count);
+        assert_eq!(storage.len(), count);
 
         return storage;
     }
@@ -235,15 +231,13 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_returns_ok() {
-        let message_count = 1_000;
+        let message_count = 1_000_000;
 
         let test_message = b"abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcd";
 
-        let mut storage = setup_test_storage(&function!(), test_message, message_count, 1600).await;
+        let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
 
-        let indices = storage.indices.lock().await;
-        let length = indices.length;
-        drop(indices);
+        let length = storage.len();
 
         let now = Instant::now();
 
@@ -258,11 +252,7 @@ mod tests {
 
         println!("Read {} messages in: {:.2?}", length, elapsed);
 
-        let indices = storage.indices.lock().await;
-        let length = indices.length;
-        drop(indices);
-
-        assert_eq!(length, message_count);
+        assert_eq!(storage.len(), message_count);
 
         //  cleanup(&storage).await;
     }
@@ -274,7 +264,7 @@ mod tests {
 
         let test_message = b"hello world hello world hello worldrld hello worldrld hello worl";
 
-        let mut storage = setup_test_storage(&function!(), test_message, total_count, 5).await;
+        let mut storage = setup_test_storage(&function!(), test_message, total_count).await;
 
         let get_result = storage.get(total_count).await;
 
