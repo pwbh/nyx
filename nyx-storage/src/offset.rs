@@ -3,11 +3,11 @@
 pub struct Offset {
     start: usize,
     data_size: usize,
-    segment_index: usize,
+    segment_count: usize,
 }
 
 impl Offset {
-    pub fn new(start: usize, end: usize, segment_index: usize) -> Result<Self, String> {
+    pub fn new(start: usize, end: usize, segment_count: usize) -> Result<Self, String> {
         if start >= end {
             return Err(format!(
                 "Start ({}) can't be greater or equal to end ({})",
@@ -18,15 +18,15 @@ impl Offset {
         Ok(Self {
             start,
             data_size: end - start,
-            segment_index,
+            segment_count,
         })
     }
 
-    pub fn from(start: usize, data_size: usize, segment_index: usize) -> Self {
+    pub fn from(start: usize, data_size: usize, segment_count: usize) -> Self {
         Self {
             start,
             data_size,
-            segment_index,
+            segment_count,
         }
     }
 
@@ -43,7 +43,7 @@ impl Offset {
         self.data_size
     }
 
-    pub fn segment_index(&self) -> usize {
-        self.segment_index
+    pub fn segment_count(&self) -> usize {
+        self.segment_count
     }
 }

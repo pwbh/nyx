@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use async_std::{io, sync::Mutex};
+use async_std::io;
 
 use crate::{
     directory::{DataType, Directory},
@@ -16,7 +16,7 @@ pub struct SegmentationManager {
 }
 
 impl SegmentationManager {
-    pub async fn new(directory: &Directory) -> io::Result<Arc<Mutex<Self>>> {
+    pub async fn new(directory: &Directory) -> io::Result<Self> {
         let latest_indices_segment = Segment::new(
             &directory,
             crate::directory::DataType::Indices,
@@ -36,11 +36,11 @@ impl SegmentationManager {
         let indices_segments = vec![Arc::new(latest_indices_segment)];
         let partition_segments = vec![Arc::new(latest_partition_segment)];
 
-        Ok(Arc::new(Mutex::new(Self {
+        Ok(Self {
             indices_segments,
             partition_segments,
             directory: directory.clone(),
-        })))
+        })
     }
 
     pub async fn create_segment(&mut self, data_type: DataType) -> io::Result<Arc<Segment>> {
@@ -69,12 +69,27 @@ impl SegmentationManager {
         Ok(new_segment)
     }
 
-    fn get_last_segment_count(&self, data_type: DataType) -> usize {
+    pub fn get_last_segment_count(&self, data_type: DataType) -> usize {
         if data_type == DataType::Indices {
             self.indices_segments.len() - 1
         } else {
             self.partition_segments.len() - 1
         }
+    }
+
+    pub async fn get_last_segment_size(&self, data_type: DataType) -> usize {
+        // These unwraps are safe
+        if data_type == DataType::Indices {
+            self.indices_segments.last()
+        } else {
+            self.partition_segments.last()
+        }
+        .unwrap()
+        .data
+        .metadata()
+        .await
+        .unwrap()
+        .len() as usize
     }
 
     fn get_last_segment(&self, data_type: DataType) -> Option<Arc<Segment>> {
@@ -87,20 +102,14 @@ impl SegmentationManager {
         segment.last().map(|segment| segment.clone())
     }
 
-    pub async fn get_latest_segment(
-        &mut self,
-        data_type: DataType,
-    ) -> io::Result<(usize, Arc<Segment>)> {
-        let segment_count = self.get_last_segment_count(data_type);
+    pub async fn get_latest_segment(&mut self, data_type: DataType) -> io::Result<Arc<Segment>> {
         // This is safe we should always have a valid segment otherwise best is crashing.
         let latest_segment = self.get_last_segment(data_type).unwrap();
 
-        let latest_segment = if latest_segment.data.metadata().await?.len() >= MAX_SEGMENT_SIZE {
-            self.create_segment(data_type).await?
+        if latest_segment.data.metadata().await?.len() >= MAX_SEGMENT_SIZE {
+            self.create_segment(data_type).await
         } else {
-            latest_segment
-        };
-
-        Ok((segment_count, latest_segment))
+            Ok(latest_segment)
+        }
     }
 }
