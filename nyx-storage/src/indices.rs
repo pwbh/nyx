@@ -10,7 +10,7 @@ pub struct Indices {
     pub total_bytes: usize,
 }
 
-const INDEX_SIZE: usize = 32;
+const INDEX_SIZE: usize = std::mem::size_of::<usize>() * 4;
 
 impl Indices {
     pub async fn from(directory: &Directory) -> io::Result<Self> {
@@ -59,7 +59,7 @@ impl Indices {
 
             indices
                 .data
-                .insert(index, Offset::from(start, data_size, segment_index));
+                .insert(index, Offset::from(index, start, data_size, segment_index));
         }
 
         Ok(indices)
@@ -76,8 +76,12 @@ mod tests {
     use super::*;
 
     async fn create_test_data(directory: &Directory) {
-        let offset = Offset::new(15, 2500, 0).unwrap();
-        let offsets = [offset; 50];
+        let mut offsets = vec![];
+
+        for i in 0..50 {
+            let offset = Offset::new(i, 15, 2500, 0).unwrap();
+            offsets.push(offset);
+        }
 
         let mut file = directory
             .open_write(crate::directory::DataType::Indices, 0)
