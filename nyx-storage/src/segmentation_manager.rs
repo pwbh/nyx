@@ -100,7 +100,7 @@ impl SegmentationManager {
             self.partition_segments.last()
         }
         .unwrap()
-        .read
+        .file
         .metadata()
         .await
         .unwrap()
@@ -121,7 +121,7 @@ impl SegmentationManager {
         // This is safe we should always have a valid segment otherwise best is to crash ASAP.
         let latest_segment = self.get_last_segment(data_type).unwrap();
 
-        if latest_segment.read.metadata().await?.len() >= MAX_SEGMENT_SIZE {
+        if latest_segment.file.metadata().await?.len() >= MAX_SEGMENT_SIZE {
             self.create_segment(data_type).await
         } else {
             Ok(latest_segment)

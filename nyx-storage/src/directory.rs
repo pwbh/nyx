@@ -89,6 +89,18 @@ impl Directory {
             .await
     }
 
+    pub async fn open_read_write(&self, datatype: DataType, count: usize) -> io::Result<File> {
+        let path = self
+            .get_file_path(datatype, count)
+            .map_err(|e| Error::new(ErrorKind::NotFound, e))?;
+        OpenOptions::new()
+            .read(true)
+            .append(true)
+            .create(true)
+            .open(path)
+            .await
+    }
+
     pub async fn delete_file(&self, datatype: DataType, count: usize) -> io::Result<()> {
         let path = self.get_file_path(datatype, count)?;
         fs::remove_file(&path).await

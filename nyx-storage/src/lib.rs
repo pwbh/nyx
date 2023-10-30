@@ -112,18 +112,14 @@ impl Storage {
     }
 
     async fn prune_to_disk(&mut self) -> io::Result<usize> {
-        println!("FLUSHING TO DISK!!!");
-
         let prune = &self.batch.get_prunable();
-
-        println!("{:?}", prune.buffer);
 
         let latest_partition_segment = self
             .segmentation_manager
             .get_latest_segment(DataType::Partition)
             .await?;
 
-        let mut latest_partition_file = &latest_partition_segment.write;
+        let mut latest_partition_file = &latest_partition_segment.file;
 
         latest_partition_file.write_all(prune.buffer).await?;
 
@@ -140,7 +136,7 @@ impl Storage {
                 .get_latest_segment(DataType::Indices)
                 .await?;
 
-            let mut latest_indices_file = &latest_indices_segment.write;
+            let mut latest_indices_file = &latest_indices_segment.file;
 
             latest_indices_file.write_all(offset).await?;
         }
@@ -157,7 +153,7 @@ impl Storage {
 
         let segment = self
             .segmentation_manager
-            .get_segment_by_index(DataType::Partition, index)?;
+            .get_segment_by_index(DataType::Partition, offset.segment_count())?;
 
         self.seek_bytes_between(offset.start(), offset.data_size(), segment)
             .await
@@ -169,7 +165,7 @@ impl Storage {
         data_size: usize,
         segment: Arc<Segment>,
     ) -> Option<&[u8]> {
-        let mut segment_file = &(*segment).read;
+        let mut segment_file = &(*segment).file;
 
         if let Err(e) = segment_file.seek(SeekFrom::Start(start as u64)).await {
             println!("error {}", e);
@@ -233,7 +229,7 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_returns_ok() {
-        let message_count = 100;
+        let message_count = 1_000_000;
         let test_message = b"hello guys";
 
         let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
