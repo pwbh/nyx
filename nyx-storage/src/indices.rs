@@ -10,7 +10,7 @@ pub struct Indices {
     pub total_bytes: usize,
 }
 
-const INDEX_SIZE: usize = std::mem::size_of::<usize>() * 4;
+const INDEX_SIZE: usize = std::mem::size_of::<Offset>();
 
 impl Indices {
     pub async fn from(directory: &Directory) -> io::Result<Self> {

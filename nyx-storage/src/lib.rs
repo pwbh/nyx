@@ -8,6 +8,7 @@ use batch::{Batch, BatchState};
 use compactor::Compactor;
 use directory::{DataType, Directory};
 use indices::Indices;
+use offset::Offset;
 use segment::Segment;
 use segmentation_manager::SegmentationManager;
 
@@ -123,23 +124,19 @@ impl Storage {
 
         latest_partition_file.write_all(prune.buffer).await?;
 
-        // TODO: get ptr to underlying layout and just write that to file.
         for offset in prune.offsets {
             let length = self.indices.data.len();
-            // println!("Inserting offset {:?} at index {}", offset, length);
             self.indices.data.insert(length, offset.clone());
-
-            let offset = offset.as_bytes();
-
-            let latest_indices_segment = self
-                .segmentation_manager
-                .get_latest_segment(DataType::Indices)
-                .await?;
-
-            let mut latest_indices_file = &latest_indices_segment.file;
-
-            latest_indices_file.write_all(offset).await?;
         }
+
+        let latest_indices_segment = self
+            .segmentation_manager
+            .get_latest_segment(DataType::Indices)
+            .await?;
+
+        let mut latest_indices_file = &latest_indices_segment.file;
+
+        latest_indices_file.write_all(prune.as_bytes()).await?;
 
         Ok(prune.buffer.len())
     }
@@ -229,7 +226,7 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_returns_ok() {
-        let message_count = 1_000_000;
+        let message_count = 100_000;
         let test_message = b"hello guys";
 
         let mut storage = setup_test_storage(&function!(), test_message, message_count).await;

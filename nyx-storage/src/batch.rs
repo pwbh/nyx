@@ -12,6 +12,17 @@ pub struct Prune<'a> {
     pub offsets: &'a [Offset],
 }
 
+impl<'a> Prune<'a> {
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                self.buffer.as_ptr() as *const u8,
+                self.buffer.len() * std::mem::size_of::<Offset>(),
+            )
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Batch {
     buffer: [u8; MAX_BATCH_SIZE],
