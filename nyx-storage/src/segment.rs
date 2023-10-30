@@ -6,7 +6,8 @@ use crate::directory::{DataType, Directory};
 pub struct Segment {
     clean: bool,
     length: u64,
-    pub data: File,
+    pub write: File,
+    pub read: File,
     pub location: String,
 }
 
@@ -17,14 +18,15 @@ impl Segment {
         length: u64,
         count: usize,
     ) -> io::Result<Self> {
-        let data = directory.open_write(data_type, count).await?;
-
+        let write = directory.open_write(data_type, count).await?;
+        let read = directory.open_read(data_type, count).await?;
         let location = directory.get_file_path(data_type, count)?;
 
         Ok(Self {
             length,
             clean: false,
-            data,
+            write,
+            read,
             location,
         })
     }

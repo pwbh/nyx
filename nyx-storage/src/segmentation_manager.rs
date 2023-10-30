@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ptr::NonNull, sync::Arc};
 
 use async_std::io;
 
@@ -8,10 +8,17 @@ use crate::{
     MAX_SEGMENT_SIZE,
 };
 
+#[derive(PartialEq)]
+pub enum SegmentMode {
+    Write,
+    Read,
+}
+
 #[derive(Debug)]
 pub struct SegmentationManager {
     indices_segments: Vec<Arc<Segment>>,
-    partition_segments: Vec<Arc<Segment>>,
+    pub partition_segments: Vec<Arc<Segment>>,
+    latest_index_segment: NonNull<Vec<Arc<Segment>>>,
     directory: Directory,
 }
 
@@ -33,13 +40,11 @@ impl SegmentationManager {
         )
         .await?;
 
-        let indices_segments = vec![Arc::new(latest_indices_segment)];
-        let partition_segments = vec![Arc::new(latest_partition_segment)];
-
         Ok(Self {
-            indices_segments,
-            partition_segments,
+            indices_segments: vec![Arc::new(latest_indices_segment)],
+            partition_segments: vec![Arc::new(latest_partition_segment)],
             directory: directory.clone(),
+            latest_index_segment: NonNull::dangling(),
         })
     }
 
@@ -69,6 +74,16 @@ impl SegmentationManager {
         Ok(new_segment)
     }
 
+    pub fn get_segment_by_index(&self, data_type: DataType, index: usize) -> Option<Arc<Segment>> {
+        let segments = if data_type == DataType::Indices {
+            &self.indices_segments
+        } else {
+            &self.partition_segments
+        };
+
+        segments.get(index).map(|segment| segment.clone())
+    }
+
     pub fn get_last_segment_count(&self, data_type: DataType) -> usize {
         if data_type == DataType::Indices {
             self.indices_segments.len() - 1
@@ -85,7 +100,7 @@ impl SegmentationManager {
             self.partition_segments.last()
         }
         .unwrap()
-        .data
+        .read
         .metadata()
         .await
         .unwrap()
@@ -103,10 +118,10 @@ impl SegmentationManager {
     }
 
     pub async fn get_latest_segment(&mut self, data_type: DataType) -> io::Result<Arc<Segment>> {
-        // This is safe we should always have a valid segment otherwise best is crashing.
+        // This is safe we should always have a valid segment otherwise best is to crash ASAP.
         let latest_segment = self.get_last_segment(data_type).unwrap();
 
-        if latest_segment.data.metadata().await?.len() >= MAX_SEGMENT_SIZE {
+        if latest_segment.read.metadata().await?.len() >= MAX_SEGMENT_SIZE {
             self.create_segment(data_type).await
         } else {
             Ok(latest_segment)
