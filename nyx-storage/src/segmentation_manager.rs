@@ -24,21 +24,11 @@ pub struct SegmentationManager {
 
 impl SegmentationManager {
     pub async fn new(directory: &Directory) -> io::Result<Self> {
-        let latest_indices_segment = Segment::new(
-            &directory,
-            crate::directory::DataType::Indices,
-            MAX_SEGMENT_SIZE,
-            0,
-        )
-        .await?;
+        let latest_indices_segment =
+            Segment::new(&directory, crate::directory::DataType::Indices, 0).await?;
 
-        let latest_partition_segment = Segment::new(
-            &directory,
-            crate::directory::DataType::Partition,
-            MAX_SEGMENT_SIZE,
-            0,
-        )
-        .await?;
+        let latest_partition_segment =
+            Segment::new(&directory, crate::directory::DataType::Partition, 0).await?;
 
         Ok(Self {
             indices_segments: vec![Arc::new(latest_indices_segment)],
@@ -48,6 +38,60 @@ impl SegmentationManager {
         })
     }
 
+    pub async fn from(directory: &Directory) -> io::Result<Self> {
+        let mut indices_segments = vec![];
+        let mut partition_segments = vec![];
+
+        let mut current_segment_candidate = 0;
+
+        while let Some(file) = directory
+            .open_read_write(DataType::Partition, current_segment_candidate)
+            .await
+            .ok()
+        {
+            current_segment_candidate += 1;
+            partition_segments.push(Arc::new(Segment::from(DataType::Partition, file).await?));
+        }
+
+        current_segment_candidate = 0;
+
+        while let Some(file) = directory
+            .open_read_write(DataType::Indices, current_segment_candidate)
+            .await
+            .ok()
+        {
+            current_segment_candidate += 1;
+            indices_segments.push(Arc::new(Segment::from(DataType::Indices, file).await?));
+        }
+
+        if indices_segments.len() == 0 {
+            let latest_indices_segment =
+                Segment::new(&directory, crate::directory::DataType::Indices, 0).await?;
+            indices_segments.push(Arc::new(latest_indices_segment));
+        }
+
+        if partition_segments.len() == 0 {
+            let latest_partition_segment =
+                Segment::new(&directory, crate::directory::DataType::Partition, 0).await?;
+            partition_segments.push(Arc::new(latest_partition_segment));
+        }
+
+        Ok(Self {
+            indices_segments,
+            partition_segments,
+            latest_index_segment: NonNull::dangling(),
+            directory: directory.clone(),
+        })
+    }
+
+    pub fn partition_segments(&self) -> &[Arc<Segment>] {
+        &self.partition_segments
+    }
+
+    pub fn indices_segments(&self) -> &[Arc<Segment>] {
+        &self.indices_segments
+    }
+
     pub async fn create_segment(&mut self, data_type: DataType) -> io::Result<Arc<Segment>> {
         let new_segment_count = if data_type == DataType::Indices {
             self.indices_segments.len()
@@ -55,13 +99,7 @@ impl SegmentationManager {
             self.partition_segments.len()
         };
 
-        let new_segment = Segment::new(
-            &self.directory,
-            data_type,
-            MAX_SEGMENT_SIZE,
-            new_segment_count,
-        )
-        .await?;
+        let new_segment = Segment::new(&self.directory, data_type, new_segment_count).await?;
 
         let new_segment = Arc::new(new_segment);
 
