@@ -49,7 +49,7 @@ impl Batch {
         latest_segment_count: usize,
         latest_segment_size: usize,
     ) -> Result<BatchState, String> {
-        if self.current_batch_size + buf.len() < self.buffer.len() {
+        if self.current_batch_size + buf.len() < MAX_BATCH_SIZE {
             if self.current_batch_index == 0 {
                 self.current_batch_index = latest_segment_count;
                 self.current_segment_size = latest_segment_size;
