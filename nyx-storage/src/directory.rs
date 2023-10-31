@@ -4,7 +4,7 @@ use std::{
 };
 
 use async_std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, DirEntry, File, OpenOptions, ReadDir},
     io,
 };
 
@@ -75,6 +75,7 @@ impl Directory {
 
     pub async fn open_read(&self, datatype: DataType, count: usize) -> io::Result<File> {
         let path = self.get_file_path(datatype, count)?;
+
         OpenOptions::new().read(true).open(path).await
     }
 
@@ -82,6 +83,7 @@ impl Directory {
         let path = self
             .get_file_path(datatype, count)
             .map_err(|e| Error::new(ErrorKind::NotFound, e))?;
+
         OpenOptions::new()
             .append(true)
             .create(true)
@@ -93,6 +95,19 @@ impl Directory {
         let path = self
             .get_file_path(datatype, count)
             .map_err(|e| Error::new(ErrorKind::NotFound, e))?;
+
+        OpenOptions::new().read(true).append(true).open(path).await
+    }
+
+    pub async fn open_read_write_create(
+        &self,
+        datatype: DataType,
+        count: usize,
+    ) -> io::Result<File> {
+        let path = self
+            .get_file_path(datatype, count)
+            .map_err(|e| Error::new(ErrorKind::NotFound, e))?;
+
         OpenOptions::new()
             .read(true)
             .append(true)

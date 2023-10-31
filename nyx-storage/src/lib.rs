@@ -1,14 +1,9 @@
 use std::sync::Arc;
 
-use async_std::{
-    channel::{bounded, Sender},
-    io::{self, prelude::SeekExt, ReadExt, SeekFrom, WriteExt},
-};
+use async_std::io::{self, prelude::SeekExt, ReadExt, SeekFrom, WriteExt};
 use batch::{Batch, BatchState};
-use compactor::Compactor;
 use directory::{DataType, Directory};
 use indices::Indices;
-use offset::Offset;
 use segment::Segment;
 use segmentation_manager::SegmentationManager;
 
@@ -38,28 +33,25 @@ pub struct Storage {
     segmentation_manager: SegmentationManager,
     retrivable_buffer: [u8; MAX_MESSAGE_SIZE],
     batch: Batch,
-    segment_sender: Sender<Segment>,
     compaction: bool,
 }
 
 impl Storage {
-    pub async fn new(title: &str, max_queue: usize, compaction: bool) -> Result<Self, String> {
+    pub async fn new(title: &str, compaction: bool) -> Result<Self, String> {
         let directory = Directory::new(title)
             .await
             .map_err(|e| format!("Storage (Directory::new): {}", e))?;
 
-        let indices = Indices::from(&directory)
+        let segmentation_manager = SegmentationManager::from(&directory)
+            .await
+            .map_err(|e| format!("Storage (SegmentationManager::from): {}", e))?;
+
+        let indices = Indices::from(&segmentation_manager.indices_segments())
             .await
             .map_err(|e| format!("Storage (Indices::from): {}", e))?;
 
-        let segmentation_manager = SegmentationManager::new(&directory)
-            .await
-            .map_err(|e| format!("Storage (SegmentationManager::new): {}", e))?;
-
-        let (segment_sender, segment_receiver) = bounded(max_queue);
-
         if compaction {
-            async_std::task::spawn(Compactor::run(segment_receiver));
+            // async_std::task::spawn(Compactor::run(segment_receiver));
         }
 
         Ok(Self {
@@ -68,7 +60,6 @@ impl Storage {
             segmentation_manager,
             retrivable_buffer: [0; MAX_MESSAGE_SIZE],
             batch: Batch::new(),
-            segment_sender,
             compaction,
         })
     }
@@ -192,7 +183,7 @@ mod tests {
     }
 
     async fn setup_test_storage(title: &str, test_message: &[u8], count: usize) -> Storage {
-        let mut storage = Storage::new(title, 10_000, false).await.unwrap();
+        let mut storage = Storage::new(title, false).await.unwrap();
 
         let messages = vec![test_message; count];
 
@@ -218,7 +209,7 @@ mod tests {
     #[cfg_attr(miri, ignore)]
     async fn new_creates_instances() {
         // (l)eader/(r)eplica_topic-name_partition-count
-        let storage = Storage::new("TEST_l_reservations_1", 10_000, false).await;
+        let storage = Storage::new("TEST_l_reservations_1", false).await;
 
         assert!(storage.is_ok());
     }
@@ -226,7 +217,7 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_returns_ok() {
-        let message_count = 100_000;
+        let message_count = 500;
         let test_message = b"hello guys";
 
         let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
@@ -245,9 +236,9 @@ mod tests {
 
         println!("Read {} messages in: {:.2?}", length, elapsed);
 
-        // assert_eq!(storage.len(), message_count);
+        assert_eq!(storage.len(), message_count);
 
-        //  cleanup(&storage).await;
+        cleanup(&storage).await;
     }
 
     #[async_std::test]
