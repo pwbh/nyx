@@ -243,7 +243,7 @@ mod tests {
 
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
-    async fn get_returns_err_on_index_out_of_bounds() {
+    async fn get_returns_none_on_index_out_of_bounds() {
         let total_count = 5;
 
         let test_message = b"hello world hello world hello worldrld hello worldrld hello worl";
