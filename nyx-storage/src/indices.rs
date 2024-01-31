@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use async_std::io::{self, prelude::SeekExt, ReadExt, WriteExt};
+use async_std::io::{self, prelude::SeekExt, ReadExt};
 
 use crate::{offset::Offset, segment::Segment};
 
@@ -60,6 +60,7 @@ impl Indices {
 
 #[cfg(test)]
 mod tests {
+    use async_std::io::WriteExt;
 
     use crate::{directory::Directory, macros::function, MAX_SEGMENT_SIZE};
 

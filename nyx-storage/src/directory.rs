@@ -4,7 +4,7 @@ use std::{
 };
 
 use async_std::{
-    fs::{self, DirEntry, File, OpenOptions, ReadDir},
+    fs::{self, File, OpenOptions},
     io,
 };
 
