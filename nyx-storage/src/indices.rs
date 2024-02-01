@@ -20,7 +20,7 @@ impl Indices {
         };
 
         for segment in segments {
-            let mut buf = [0u8; OFFSET_SIZE];
+            let mut buf: [u8; 32] = [0u8; OFFSET_SIZE];
             let mut file = &(*segment).file;
 
             loop {
@@ -51,6 +51,8 @@ impl Indices {
                 indices
                     .data
                     .insert(index, Offset::from(index, start, data_size, segment_index));
+
+                indices.total_bytes += data_size;
             }
         }
 
@@ -62,7 +64,7 @@ impl Indices {
 mod tests {
     use async_std::io::WriteExt;
 
-    use crate::{directory::Directory, macros::function, MAX_SEGMENT_SIZE};
+    use crate::{directory::Directory, macros::function};
 
     use super::*;
 

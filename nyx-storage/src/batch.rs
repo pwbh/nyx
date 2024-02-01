@@ -13,13 +13,17 @@ pub struct Prune<'a> {
 }
 
 impl<'a> Prune<'a> {
-    pub fn as_bytes(&self) -> &[u8] {
+    pub fn offsets_as_bytes(&self) -> &[u8] {
         unsafe {
             std::slice::from_raw_parts(
-                self.buffer.as_ptr() as *const u8,
-                self.buffer.len() * std::mem::size_of::<Offset>(),
+                self.offsets.as_ptr() as *const u8,
+                self.offsets.len() * std::mem::size_of::<Offset>(),
             )
         }
+    }
+
+    pub fn buffer_as_bytes(&self) -> &[u8] {
+        &self.buffer[..]
     }
 }
 
@@ -36,7 +40,7 @@ impl Batch {
     pub fn new() -> Self {
         Self {
             buffer: [0; MAX_BATCH_SIZE],
-            offsets: vec![],
+            offsets: Vec::with_capacity(1024),
             current_batch_size: 0,
             current_batch_index: 0,
             current_segment_size: 0,
@@ -48,6 +52,7 @@ impl Batch {
         buf: &[u8],
         latest_segment_count: usize,
         latest_segment_size: usize,
+        total_offsets: usize,
     ) -> Result<BatchState, String> {
         if self.current_batch_size + buf.len() < MAX_BATCH_SIZE {
             if self.current_batch_index == 0 {
@@ -56,7 +61,7 @@ impl Batch {
             }
 
             let offset = Offset::new(
-                self.current_batch_index,
+                self.current_batch_index + total_offsets,
                 self.current_segment_size,
                 self.current_segment_size + buf.len(),
                 latest_segment_count,
@@ -76,7 +81,7 @@ impl Batch {
     }
 
     pub fn reset(&mut self) {
-        self.offsets.clear();
+        self.offsets = Vec::with_capacity(1024);
         self.current_batch_size = 0;
         self.current_batch_index = 0;
     }

@@ -46,9 +46,11 @@ impl Storage {
             .await
             .map_err(|e| format!("Storage (SegmentationManager::from): {}", e))?;
 
-        let indices = Indices::from(&segmentation_manager.indices_segments())
+        let indices = Indices::from(segmentation_manager.indices_segments())
             .await
             .map_err(|e| format!("Storage (Indices::from): {}", e))?;
+
+        println!("{:#?}", indices);
 
         if compaction {
             // async_std::task::spawn(Compactor::run(segment_receiver));
@@ -82,14 +84,23 @@ impl Storage {
             .get_last_segment_size(DataType::Partition)
             .await;
 
-        let batch_state = self
-            .batch
-            .add(buf, latest_segment_count, latest_segment_size)?;
+        let last_total_entries = self.len();
+
+        let batch_state = self.batch.add(
+            buf,
+            latest_segment_count,
+            latest_segment_size,
+            last_total_entries,
+        )?;
 
         if batch_state == BatchState::ShouldFlush {
             self.flush().await?;
-            self.batch
-                .add(buf, latest_segment_count, latest_segment_size)?;
+            self.batch.add(
+                buf,
+                latest_segment_count,
+                latest_segment_size,
+                last_total_entries,
+            )?;
         }
 
         Ok(())
@@ -113,7 +124,9 @@ impl Storage {
 
         let mut latest_partition_file = &latest_partition_segment.file;
 
-        latest_partition_file.write_all(prune.buffer).await?;
+        latest_partition_file
+            .write_all(prune.buffer_as_bytes())
+            .await?;
 
         for offset in prune.offsets {
             let length = self.indices.data.len();
@@ -127,7 +140,9 @@ impl Storage {
 
         let mut latest_indices_file = &latest_indices_segment.file;
 
-        latest_indices_file.write_all(prune.as_bytes()).await?;
+        latest_indices_file
+            .write_all(prune.offsets_as_bytes())
+            .await?;
 
         Ok(prune.buffer.len())
     }
@@ -217,7 +232,7 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_returns_ok() {
-        let message_count = 500_000;
+        let message_count = 1_000_000;
         let test_message = b"messssagee";
 
         let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
