@@ -85,11 +85,11 @@ impl SegmentationManager {
     }
 
     pub fn partition_segments(&self) -> &[Arc<Segment>] {
-        &self.partition_segments
+        &self.partition_segments[..]
     }
 
     pub fn indices_segments(&self) -> &[Arc<Segment>] {
-        &self.indices_segments
+        &self.indices_segments[..]
     }
 
     pub async fn create_segment(&mut self, data_type: DataType) -> io::Result<Arc<Segment>> {

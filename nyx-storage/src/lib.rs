@@ -117,7 +117,7 @@ impl Storage {
 
         for offset in prune.offsets {
             let length = self.indices.data.len();
-            self.indices.data.insert(length, offset.clone());
+            self.indices.data.insert(length, *offset);
         }
 
         let latest_indices_segment = self
@@ -217,7 +217,7 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_returns_ok() {
-        let message_count = 500;
+        let message_count = 500_000;
         let test_message = b"messssagee";
 
         let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
