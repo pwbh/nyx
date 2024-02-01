@@ -39,7 +39,7 @@ impl Offset {
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        let offset = self as *const _ as *const [u8; 32];
+        let offset = self as *const _ as *const [u8; std::mem::size_of::<Offset>()];
         unsafe { &(*offset) }
     }
 

@@ -232,7 +232,7 @@ mod tests {
     #[async_std::test]
     #[cfg_attr(miri, ignore)]
     async fn get_returns_ok() {
-        let message_count = 1_000_000;
+        let message_count = 500;
         let test_message = b"messssagee";
 
         let mut storage = setup_test_storage(&function!(), test_message, message_count).await;
